@@ -48,6 +48,14 @@ if("MCP2515" IN_LIST CAN_DRIVER)
     list(APPEND HARDWARE_INTEGRATION_INCLUDE "spi_interface_esp.hpp")
   endif()
 endif()
+if ("WindowsSerial" IN_LIST CAN_DRIVER)
+  list(APPEND HARDWARE_INTEGRATION_SRC "windows_serial_interface.cpp")
+  list(APPEND HARDWARE_INTEGRATION_INCLUDE "windows_serial_interface.hpp")
+endif()
+if ("LinuxSerial" IN_LIST CAN_DRIVER)
+  list(APPEND HARDWARE_INTEGRATION_SRC "linux_serial_interface.cpp")
+  list(APPEND HARDWARE_INTEGRATION_INCLUDE "linux_serial_interface.hpp")
+endif()
 
 # Prepend the source directory path to all the source files
 prepend(HARDWARE_INTEGRATION_SRC ${HARDWARE_INTEGRATION_SRC_DIR}

@@ -487,7 +487,7 @@ void CANHardwareInterface::receive_message_thread_function(uint8_t aCANChannel)
 			}
 			else
 			{
-				isobus::CANStackLogger::CAN_stack_log(isobus::CANStackLogger::LoggingLevel::Critical, "[CAN Rx Thread]: CAN Channel " + isobus::to_string(aCANChannel) + " appears to be invalid.");
+				isobus::CANStackLogger::CAN_stack_log(isobus::CANStackLogger::LoggingLevel::Critical, "[CAN Rx Thread]: CAN Channel " + isobus::to_string(static_cast<int>(aCANChannel)) + " appears to be invalid.");
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Arbitrary, but don't want to infinite loop on the validity check.
 			}
 		}
