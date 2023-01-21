@@ -2320,9 +2320,31 @@ namespace isobus
 
 	bool VirtualTerminalClient::send_aux_n_preferred_assignment()
 	{
-		//! @todo load preferred assignment from saved configuration
 		//! @todo only send command if there is an Auxiliary Function Type 2 object in the object pool
-		std::vector<std::uint8_t> buffer = { static_cast<std::uint8_t>(Function::PreferredAssignmentCommand), 0 };
+
+		std::vector<std::uint8_t> buffer = { static_cast<std::uint8_t>(Function::PreferredAssignmentCommand), static_cast<std::uint8_t>(auxiliaryInputDevices.size()) };
+		for (AuxiliaryInputDevice &device : auxiliaryInputDevices)
+		{
+			buffer.push_back(static_cast<std::uint8_t>(device.name));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 8));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 16));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 24));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 32));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 40));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 48));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 56));
+			buffer.push_back(static_cast<std::uint8_t>(device.modelIdentificationCode));
+			buffer.push_back(static_cast<std::uint8_t>(device.modelIdentificationCode >> 8));
+			buffer.push_back(static_cast<std::uint8_t>(device.functions.size()));
+			for (AssignedAuxiliaryFunction &function : device.functions)
+			{
+				buffer.push_back(static_cast<std::uint8_t>(function.functionObjectID));
+				buffer.push_back(static_cast<std::uint8_t>(function.functionObjectID >> 8));
+				buffer.push_back(static_cast<std::uint8_t>(function.inputObjectID));
+				buffer.push_back(static_cast<std::uint8_t>(function.inputObjectID >> 8));
+			}
+		}
+
 		if (buffer.size() < CAN_DATA_LENGTH)
 		{
 			buffer.resize(CAN_DATA_LENGTH);
@@ -2360,6 +2382,36 @@ namespace isobus
 		                                                      myControlFunction.get(),
 		                                                      partnerControlFunction.get(),
 		                                                      CANIdentifier::PriorityLowest7);
+	}
+
+	void VirtualTerminalClient::save_aux_n_preferred_assignment()
+	{
+		//! @todo Don't overwrite preferred assignments of device that are not connected to the ECU
+		std::vector<std::uint8_t> buffer;
+		buffer.push_back(static_cast<std::uint8_t>(auxiliaryInputDevices.size()));
+		for (AuxiliaryInputDevice &device : auxiliaryInputDevices)
+		{
+			buffer.push_back(static_cast<std::uint8_t>(device.name));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 8));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 16));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 24));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 32));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 40));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 48));
+			buffer.push_back(static_cast<std::uint8_t>(device.name >> 56));
+			buffer.push_back(static_cast<std::uint8_t>(device.modelIdentificationCode));
+			buffer.push_back(static_cast<std::uint8_t>(device.modelIdentificationCode >> 8));
+			buffer.push_back(static_cast<std::uint8_t>(device.functions.size()));
+			for (AssignedAuxiliaryFunction &function : device.functions)
+			{
+				buffer.push_back(static_cast<std::uint8_t>(function.functionType));
+				buffer.push_back(static_cast<std::uint8_t>(function.inputObjectID));
+				buffer.push_back(static_cast<std::uint8_t>(function.inputObjectID >> 8));
+				buffer.push_back(static_cast<std::uint8_t>(function.functionObjectID));
+				buffer.push_back(static_cast<std::uint8_t>(function.functionObjectID >> 8));
+			}
+		}
+		StorageManager::request_write_storage(StorageManager::StorageEntryType::VTClientPreferredAssignment, buffer);
 	}
 
 	void VirtualTerminalClient::set_state(StateMachineState value)
@@ -2834,13 +2886,16 @@ namespace isobus
 
 							if (0 != message->get_uint8_at(1))
 							{
+								for (AuxiliaryInputDevice &device : parentVT->auxiliaryInputDevices)
+								{
+									device.functions.clear();
+								}
 								std::uint16_t faultyObjectID = message->get_uint16_at(2);
-								CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Error, "[AUX-N]: Auxiliary Function Object ID of faulty assignment: " + isobus::to_string(faultyObjectID));
+								CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Error, "[AUX-N]: Resetting assigned functions... Auxiliary Function Object ID of faulty assignment: " + isobus::to_string(faultyObjectID));
 							}
 							else
 							{
 								CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Debug, "[AUX-N]: Preferred Assignment OK");
-								//! @todo load the preferred assignment into parentVT->auxiliaryInputDevices
 							}
 						}
 						break;
@@ -2864,7 +2919,7 @@ namespace isobus
 										aux.functions.clear();
 										if (storeAsPreferred)
 										{
-											//! @todo save preferred assignment to persistent configuration
+											parentVT->save_aux_n_preferred_assignment();
 										}
 									}
 									CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[AUX-N] Unassigned all functions");
@@ -2878,7 +2933,7 @@ namespace isobus
 											aux.functions.clear();
 											if (storeAsPreferred)
 											{
-												//! @todo save preferred assignment to persistent configuration
+												parentVT->save_aux_n_preferred_assignment();
 											}
 											CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[AUX-N] Unassigned function " + isobus::to_string(static_cast<int>(functionObjectID)) + " from input " + isobus::to_string(static_cast<int>(inputObjectID)));
 											break;
@@ -2898,7 +2953,7 @@ namespace isobus
 													aux.functions.erase(iter);
 													if (storeAsPreferred)
 													{
-														//! @todo save preferred assignment to persistent configuration
+														parentVT->save_aux_n_preferred_assignment();
 													}
 													CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[AUX-N] Unassigned function " + isobus::to_string(static_cast<int>(functionObjectID)) + " from input " + isobus::to_string(static_cast<int>(inputObjectID)));
 												}
@@ -2919,7 +2974,7 @@ namespace isobus
 													aux.functions.erase(iter);
 													if (storeAsPreferred)
 													{
-														//! @todo save preferred assignment to persistent configuration
+														parentVT->save_aux_n_preferred_assignment();
 													}
 													CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[AUX-N] Unassigned function " + isobus::to_string(static_cast<int>(functionObjectID)) + " from input " + isobus::to_string(static_cast<int>(inputObjectID)));
 												}
@@ -2944,7 +2999,7 @@ namespace isobus
 													aux.functions.push_back(assignment);
 													if (storeAsPreferred)
 													{
-														//! @todo save preferred assignment to persistent configuration
+														parentVT->save_aux_n_preferred_assignment();
 													}
 													CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[AUX-N]: Assigned function " + isobus::to_string(static_cast<int>(functionObjectID)) + " to input " + isobus::to_string(static_cast<int>(inputObjectID)));
 												}
@@ -3470,6 +3525,58 @@ namespace isobus
 			}
 		}
 		return retVal;
+	}
+
+	void VirtualTerminalClient::process_storage_read_response(StorageManager::StorageEntryType id, std::vector<std::uint8_t> data, void *parentPointer)
+	{
+		if (nullptr != parentPointer)
+		{
+			VirtualTerminalClient *parentVT = reinterpret_cast<VirtualTerminalClient *>(parentPointer);
+			switch (id)
+			{
+				case StorageManager::StorageEntryType::VTClientPreferredAssignment:
+				{
+					if (data.size() > 0)
+					{
+						auto it = data.begin();
+						std::uint8_t numberOfDevices = *it++;
+						for (std::uint8_t deviceIndex = 0; deviceIndex < numberOfDevices; deviceIndex++)
+						{
+							std::uint64_t deviceName = *it++ |
+							  (static_cast<std::uint64_t>(*it++) << 8) |
+							  (static_cast<std::uint64_t>(*it++) << 16) |
+							  (static_cast<std::uint64_t>(*it++) << 24) |
+							  (static_cast<std::uint64_t>(*it++) << 32) |
+							  (static_cast<std::uint64_t>(*it++) << 40) |
+							  (static_cast<std::uint64_t>(*it++) << 48) |
+							  (static_cast<std::uint64_t>(*it++) << 56);
+
+							std::uint16_t modelIdentificationCode = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+
+							// Check if the device is online
+							for (AuxiliaryInputDevice &device : parentVT->auxiliaryInputDevices)
+							{
+								if ((device.name == deviceName) && (device.modelIdentificationCode == modelIdentificationCode))
+								{
+									std::uint8_t numberOfFunctions = *it++;
+
+									for (std::uint8_t functionIndex = 0; functionIndex < numberOfFunctions; functionIndex++)
+									{
+										AuxiliaryTypeTwoFunctionType functionType = static_cast<AuxiliaryTypeTwoFunctionType>(*it++);
+										std::uint16_t inputObjectID = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+										std::uint16_t functionObjectID = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+										device.functions.push_back(AssignedAuxiliaryFunction(functionObjectID, inputObjectID, functionType));
+									}
+									break;
+								}
+							}
+						}
+						parentVT->send_aux_n_preferred_assignment();
+					}
+				}
+				break;
+			}
+		}
 	}
 
 	void VirtualTerminalClient::worker_thread_function()

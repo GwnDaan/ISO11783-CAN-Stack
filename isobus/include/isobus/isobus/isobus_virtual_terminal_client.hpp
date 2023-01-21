@@ -11,6 +11,7 @@
 
 #include "isobus/isobus/can_internal_control_function.hpp"
 #include "isobus/isobus/can_partnered_control_function.hpp"
+#include "isobus/isobus/storage_manager.hpp"
 #include "isobus/utility/processing_flags.hpp"
 
 #include <memory>
@@ -1325,6 +1326,9 @@ namespace isobus
 		/// @returns true if the message was sent successfully
 		bool send_aux_n_assignment_response(std::uint16_t functionObjectID, bool hasError, bool isAlreadyAssigned);
 
+		/// @brief Queue a write operation to storage for auxiliary functions type 2
+		void save_aux_n_preferred_assignment();
+
 		/// @brief Sets the state machine state and updates the associated timestamp
 		/// @param[in] value The new state for the state machine
 		void set_state(StateMachineState value);
@@ -1469,6 +1473,12 @@ namespace isobus
 		                                                         std::uint32_t numberOfBytesNeeded,
 		                                                         std::uint8_t *chunkBuffer,
 		                                                         void *parentPointer);
+
+		/// @brief Processes a storage read response
+		/// @param[in] id The type storage read
+		/// @param[in] data The data returned from the storage read
+		/// @param[in] parentPointer A context variable that is passed back through the callback
+		static void process_storage_read_response(StorageManager::StorageEntryType id, std::vector<std::uint8_t> data, void *parentPointer);
 
 		/// @brief The worker thread will execute this function when it runs, if applicable
 		void worker_thread_function();
