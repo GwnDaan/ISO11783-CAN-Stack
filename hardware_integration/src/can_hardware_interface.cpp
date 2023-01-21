@@ -8,6 +8,7 @@
 /// @copyright 2022 Adrian Del Grosso
 //================================================================================================
 #include "isobus/hardware_integration/can_hardware_interface.hpp"
+#include "isobus/hardware_integration/storage_hardware_interface.hpp"
 #include "isobus/isobus/can_stack_logger.hpp"
 #include "isobus/utility/system_timing.hpp"
 #include "isobus/utility/to_string.hpp"
@@ -420,6 +421,8 @@ void CANHardwareInterface::can_thread_function()
 					}
 				}
 				canLibUpdateCallbacksMutex.unlock();
+
+				StorageHardwareInterface::update();
 			}
 
 			for (std::uint32_t i = 0; i < hardwareChannels.size(); i++)

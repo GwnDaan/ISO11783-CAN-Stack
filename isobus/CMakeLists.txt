@@ -31,7 +31,8 @@ set(ISOBUS_SRC
     "can_extended_transport_protocol.cpp"
     "isobus_diagnostic_protocol.cpp"
     "can_parameter_group_number_request_protocol.cpp"
-    "nmea2000_fast_packet_protocol.cpp")
+    "nmea2000_fast_packet_protocol.cpp"
+    "storage_manager.cpp")
 
 # Prepend the source directory path to all the source files
 prepend(ISOBUS_SRC ${ISOBUS_SRC_DIR} ${ISOBUS_SRC})
@@ -57,7 +58,8 @@ set(ISOBUS_INCLUDE
     "can_extended_transport_protocol.hpp"
     "isobus_diagnostic_protocol.hpp"
     "can_parameter_group_number_request_protocol.hpp"
-    "nmea2000_fast_packet_protocol.hpp")
+    "nmea2000_fast_packet_protocol.hpp"
+    "storage_manager.hpp")
 
 # Prepend the include directory path to all the include files
 prepend(ISOBUS_INCLUDE ${ISOBUS_INCLUDE_DIR} ${ISOBUS_INCLUDE})
