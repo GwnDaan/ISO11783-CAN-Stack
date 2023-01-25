@@ -1,7 +1,10 @@
 #include "isobus/isobus/storage_manager.hpp"
 #include "isobus/isobus/storage_hardware_abstraction.hpp"
 
-std::vector<isobus::StorageManager::StorageManager::ReadStorageCallbackInfo> isobus::StorageManager::storageReadCallbacks;
+#include <algorithm>
+
+std::mutex isobus::StorageManager::storageReadCallbackMutex;
+std::vector<isobus::StorageManager::ReadStorageCallbackInfo> isobus::StorageManager::storageReadCallbacks;
 
 isobus::StorageManager::ReadStorageCallbackInfo::ReadStorageCallbackInfo(const ReadStorageCallback callback, void *parent) :
   callback(callback), parent(parent)
@@ -25,7 +28,7 @@ bool isobus::StorageManager::add_storage_read_callback(ReadStorageCallback callb
 
 	std::lock_guard<std::mutex> lock(storageReadCallbackMutex);
 	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callbackInfo);
-	if (location != storageReadCallbacks.end())
+	if (location == storageReadCallbacks.end())
 	{
 		storageReadCallbacks.push_back(callbackInfo);
 		retVal = true;
@@ -36,10 +39,10 @@ bool isobus::StorageManager::add_storage_read_callback(ReadStorageCallback callb
 bool isobus::StorageManager::remove_storage_read_callback(ReadStorageCallback callback, void *parentPointer)
 {
 	bool retVal = false;
-	ReadStorageCallbackInfo callback(callback, parentPointer);
+	ReadStorageCallbackInfo callbackInfo(callback, parentPointer);
 
 	std::lock_guard<std::mutex> lock(storageReadCallbackMutex);
-	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callback);
+	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callbackInfo);
 	if (location != storageReadCallbacks.end())
 	{
 		storageReadCallbacks.erase(location);

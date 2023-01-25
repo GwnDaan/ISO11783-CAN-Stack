@@ -44,7 +44,7 @@ public:
 		bool operator==(const ReadStorageCallbackInfo &obj);
 
 	private:
-		const ReadStorageCallback callback; ///< The callback
+		ReadStorageCallback callback; ///< The callback
 		void *parent; ///< Context variable, the owner of the callback
 	};
 

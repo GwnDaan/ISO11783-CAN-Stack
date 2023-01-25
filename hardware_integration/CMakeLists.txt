@@ -21,14 +21,15 @@ if(NOT CAN_DRIVER)
 endif()
 
 # Set the source files
-set(HARDWARE_INTEGRATION_SRC "can_hardware_interface.cpp"
-                             "storage_hardware_interface.cpp")
+set(HARDWARE_INTEGRATION_SRC
+    "can_hardware_interface.cpp" "storage_hardware_interface.cpp"
+    "file_storage_plugin.cpp")
 
 # Set the include files
-set(HARDWARE_INTEGRATION_INCLUDE "can_hardware_interface.hpp"
-                                 "can_hardware_plugin.hpp"
-                                 "storage_hardware_interface.hpp"
-                                 "storage_hardware_plugin.hpp")
+set(HARDWARE_INTEGRATION_INCLUDE
+    "can_hardware_interface.hpp" "can_hardware_plugin.hpp"
+    "storage_hardware_interface.hpp" "storage_hardware_plugin.hpp"
+    "file_storage_plugin.hpp")
 
 # Add the source/include files based on the CAN driver chosen
 if("SocketCAN" IN_LIST CAN_DRIVER)

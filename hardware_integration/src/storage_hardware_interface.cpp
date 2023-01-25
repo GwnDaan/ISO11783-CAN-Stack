@@ -1,13 +1,16 @@
 #include "isobus/hardware_integration/storage_hardware_interface.hpp"
-#include "isobus/isobus/can_warning_logger.hpp"
+#include "isobus/isobus/can_stack_logger.hpp"
 #include "isobus/isobus/storage_hardware_abstraction.hpp"
 #include "isobus/utility/to_string.hpp"
+
+#include <algorithm>
 
 std::mutex StorageHardwareInterface::storageDataToBeWrittenMutex;
 std::deque<std::pair<std::uint64_t, std::vector<std::uint8_t>>> StorageHardwareInterface::storageDataToBeWritten;
 
 std::mutex StorageHardwareInterface::storageReadRequestsMutex;
 std::deque<std::uint64_t> StorageHardwareInterface::storageReadRequests;
+std::vector<StorageHardwareInterface::ReadStorageCallbackInfo> StorageHardwareInterface::storageReadCallbacks;
 
 StorageHardwarePlugin *StorageHardwareInterface::storageHandler = nullptr;
 
@@ -29,6 +32,7 @@ bool StorageHardwareInterface::ReadStorageCallbackInfo::operator==(const ReadSto
 bool StorageHardwareInterface::set_storage_handler(StorageHardwarePlugin *storageDriver)
 {
 	storageHandler = storageDriver;
+	return true;
 }
 
 bool StorageHardwareInterface::add_storage_write_request(const std::uint64_t id, const std::vector<std::uint8_t> &data)
@@ -68,7 +72,7 @@ bool StorageHardwareInterface::add_storage_read_callback(ReadStorageCallback cal
 
 	std::lock_guard<std::mutex> lock(storageReadRequestsMutex);
 	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callbackInfo);
-	if (location != storageReadCallbacks.end())
+	if (location == storageReadCallbacks.end())
 	{
 		storageReadCallbacks.push_back(callbackInfo);
 		retVal = true;
@@ -79,10 +83,10 @@ bool StorageHardwareInterface::add_storage_read_callback(ReadStorageCallback cal
 bool StorageHardwareInterface::remove_storage_read_callback(ReadStorageCallback callback, void *parentPointer)
 {
 	bool retVal = false;
-	ReadStorageCallbackInfo callback(callback, parentPointer);
+	ReadStorageCallbackInfo callbackInfo(callback, parentPointer);
 
 	std::lock_guard<std::mutex> lock(storageReadRequestsMutex);
-	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callback);
+	auto location = std::find(storageReadCallbacks.begin(), storageReadCallbacks.end(), callbackInfo);
 	if (location != storageReadCallbacks.end())
 	{
 		storageReadCallbacks.erase(location);
@@ -97,9 +101,9 @@ void StorageHardwareInterface::process_read_queue_item()
 	if (storageReadRequests.size() > 0)
 	{
 		std::uint64_t id = storageReadRequests.front();
+		storageReadRequests.pop_front();
 		if (storageHandler != nullptr)
 		{
-			storageReadRequests.pop_front();
 			std::vector<std::uint8_t> data;
 			if (storageHandler->read_data(id, data))
 			{
@@ -108,10 +112,14 @@ void StorageHardwareInterface::process_read_queue_item()
 					callback.call_callback(id, data);
 				}
 			}
+			else
+			{
+				isobus::CANStackLogger::error("[Storage]: Failed to read data with id " + isobus::to_string(static_cast<int>(id)));
+			}
 		}
 		else
 		{
-			isobus::CANStackLogger::CAN_stack_log("[Storage]: No storage handler set, cannot read data with id " + isobus::to_string(static_cast<int>(id)));
+			isobus::CANStackLogger::error("[Storage]: No storage handler set, cannot read data with id " + isobus::to_string(static_cast<int>(id)));
 		}
 	}
 }
@@ -122,14 +130,17 @@ void StorageHardwareInterface::process_write_queue_item()
 	if (storageDataToBeWritten.size() > 0)
 	{
 		auto data = storageDataToBeWritten.front();
+		storageDataToBeWritten.pop_front();
 		if (storageHandler != nullptr)
 		{
-			storageDataToBeWritten.pop_front();
-			storageHandler->write_data(data.first, data.second);
+			if (!storageHandler->write_data(data.first, data.second))
+			{
+				isobus::CANStackLogger::error("[Storage]: Failed to write data with id " + isobus::to_string(static_cast<int>(data.first)));
+			}
 		}
 		else
 		{
-			isobus::CANStackLogger::CAN_stack_log("[Storage]: No storage handler set, cannot read data with id " + isobus::to_string(static_cast<int>(data.first)));
+			isobus::CANStackLogger::error("[Storage]: No storage handler set, cannot write data with id " + isobus::to_string(static_cast<int>(data.first)));
 		}
 	}
 }

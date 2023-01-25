@@ -1,9 +1,12 @@
 #include "isobus/hardware_integration/can_hardware_interface.hpp"
+#include "isobus/hardware_integration/file_storage_plugin.hpp"
+#include "isobus/hardware_integration/storage_hardware_interface.hpp"
 #include "isobus/isobus/can_general_parameter_group_numbers.hpp"
 #include "isobus/isobus/can_network_manager.hpp"
 #include "isobus/isobus/can_partnered_control_function.hpp"
 #include "isobus/isobus/can_stack_logger.hpp"
 #include "isobus/isobus/isobus_virtual_terminal_client.hpp"
+#include "isobus/isobus/storage_manager.hpp"
 #include "isobus/utility/iop_file_interface.hpp"
 #include "object_pool_ids.h"
 
@@ -18,6 +21,8 @@ static SocketCANInterface canDriver("can0");
 #include <csignal>
 #include <iostream>
 #include <memory>
+
+static FileStoragePlugin storageDriver("");
 
 static std::shared_ptr<isobus::InternalControlFunction> TestInternalECU = nullptr;
 static std::shared_ptr<isobus::PartneredControlFunction> TestPartnerVT = nullptr;
@@ -112,6 +117,11 @@ void raw_can_glue(isobus::HardwareInterfaceCANFrame &rawFrame, void *parentPoint
 	isobus::CANNetworkManager::CANNetwork.can_lib_process_rx_message(rawFrame, parentPointer);
 }
 
+void raw_storage_glue(const std::uint64_t id, const std::vector<std::uint8_t> data, void *)
+{
+	isobus::StorageManager::process_storage_read(id, data);
+}
+
 // This callback will provide us with event driven notifications of auxiliary input from the stack
 void handle_aux_input(isobus::VirtualTerminalClient::AssignedAuxiliaryFunction function, std::uint16_t value1, std::uint16_t value2, isobus::VirtualTerminalClient *)
 {
@@ -131,6 +141,9 @@ void setup()
 
 	CANHardwareInterface::add_can_lib_update_callback(update_CAN_network, nullptr);
 	CANHardwareInterface::add_raw_can_message_rx_callback(raw_can_glue, nullptr);
+
+	StorageHardwareInterface::set_storage_handler(&storageDriver);
+	StorageHardwareInterface::add_storage_read_callback(raw_storage_glue);
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(250));
 

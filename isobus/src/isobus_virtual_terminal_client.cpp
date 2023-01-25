@@ -60,6 +60,7 @@ namespace isobus
 			CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::VirtualTerminalToECU), process_rx_message, this);
 			CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ECUtoVirtualTerminal), process_rx_message, this);
 		}
+		StorageManager::add_storage_read_callback(&process_storage_read_response, this);
 	}
 
 	VirtualTerminalClient::~VirtualTerminalClient()
@@ -2321,8 +2322,15 @@ namespace isobus
 	bool VirtualTerminalClient::send_aux_n_preferred_assignment()
 	{
 		//! @todo only send command if there is an Auxiliary Function Type 2 object in the object pool
-
-		std::vector<std::uint8_t> buffer = { static_cast<std::uint8_t>(Function::PreferredAssignmentCommand), static_cast<std::uint8_t>(auxiliaryInputDevices.size()) };
+		std::uint8_t numAssignments = 0;
+		for (AuxiliaryInputDevice &device : auxiliaryInputDevices)
+		{
+			if (device.functions.size() > 0)
+			{
+				numAssignments++;
+			}
+		}
+		std::vector<std::uint8_t> buffer = { static_cast<std::uint8_t>(Function::PreferredAssignmentCommand), static_cast<std::uint8_t>(numAssignments) };
 		for (AuxiliaryInputDevice &device : auxiliaryInputDevices)
 		{
 			buffer.push_back(static_cast<std::uint8_t>(device.name));
@@ -2905,7 +2913,7 @@ namespace isobus
 							if (14 == message->get_data_length())
 							{
 								std::uint64_t isoName = message->get_uint64_at(1);
-								bool storeAsPreferred = message->get_bool_at(9, 7);
+								bool storeAsPreferred = !message->get_bool_at(9, 7);
 								std::uint8_t functionType = (message->get_uint8_at(9) & 0x1F);
 								std::uint16_t inputObjectID = message->get_uint16_at(10);
 								std::uint16_t functionObjectID = message->get_uint16_at(12);
@@ -3244,14 +3252,7 @@ namespace isobus
 								{
 									CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Info, "[VT]: Loaded object pool version from VT non-volatile memory with no errors.");
 									parentVT->set_state(StateMachineState::Connected);
-									if (parentVT->send_aux_n_preferred_assignment())
-									{
-										CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Debug, "[AUX-N]: Sent preferred assignments.");
-									}
-									else
-									{
-										CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Warning, "[AUX-N]: Failed to send preferred assignments.");
-									}
+									StorageManager::request_read_storage(StorageManager::StorageEntryType::VTClientPreferredAssignment);
 								}
 								else
 								{
@@ -3359,14 +3360,7 @@ namespace isobus
 										parentVT->set_state(StateMachineState::Connected);
 									}
 
-									if (parentVT->send_aux_n_preferred_assignment())
-									{
-										CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Debug, "[AUX-N]: Sent preferred assignments.");
-									}
-									else
-									{
-										CANStackLogger::CAN_stack_log(CANStackLogger::LoggingLevel::Warning, "[AUX-N]: Failed to send preferred assignments.");
-									}
+									StorageManager::request_read_storage(StorageManager::StorageEntryType::VTClientPreferredAssignment);
 								}
 								else
 								{
@@ -3551,7 +3545,11 @@ namespace isobus
 							  (static_cast<std::uint64_t>(*it++) << 48) |
 							  (static_cast<std::uint64_t>(*it++) << 56);
 
+							CANStackLogger::debug("Device name: " + static_cast<int>(deviceName));
+
 							std::uint16_t modelIdentificationCode = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+
+							CANStackLogger::debug("Model ID: " + static_cast<int>(modelIdentificationCode));
 
 							// Check if the device is online
 							for (AuxiliaryInputDevice &device : parentVT->auxiliaryInputDevices)
@@ -3560,11 +3558,16 @@ namespace isobus
 								{
 									std::uint8_t numberOfFunctions = *it++;
 
+									CANStackLogger::debug("Number of functions: " + static_cast<int>(numberOfFunctions));
+
 									for (std::uint8_t functionIndex = 0; functionIndex < numberOfFunctions; functionIndex++)
 									{
 										AuxiliaryTypeTwoFunctionType functionType = static_cast<AuxiliaryTypeTwoFunctionType>(*it++);
+										CANStackLogger::debug("Function type: " + static_cast<int>(functionType));
 										std::uint16_t inputObjectID = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+										CANStackLogger::debug("Input object ID: " + static_cast<int>(inputObjectID));
 										std::uint16_t functionObjectID = *it++ | (static_cast<std::uint16_t>(*it++) << 8);
+										CANStackLogger::debug("Function object ID: " + static_cast<int>(functionObjectID));
 										device.functions.push_back(AssignedAuxiliaryFunction(functionObjectID, inputObjectID, functionType));
 									}
 									break;

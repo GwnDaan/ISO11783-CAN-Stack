@@ -1,6 +1,7 @@
 #include "isobus/hardware_integration/file_storage_plugin.hpp"
 #include <fstream>
 #include <iostream>
+#include <iterator>
 
 FileStoragePlugin::FileStoragePlugin(const std::string &dir, const std::string &suffix) :
   dir(dir), suffix(suffix)
@@ -14,7 +15,7 @@ FileStoragePlugin::~FileStoragePlugin()
 bool FileStoragePlugin::write_data(const std::uint64_t id, const std::vector<std::uint8_t> &data)
 {
 	bool retVal = false;
-	std::ofstream file(dir + std::to_string(id), std::ios::out | std::ios::binary);
+	std::ofstream file(dir + std::to_string(id) + suffix, std::ios::binary);
 	if (file.is_open())
 	{
 		file.clear();
@@ -28,7 +29,7 @@ bool FileStoragePlugin::write_data(const std::uint64_t id, const std::vector<std
 bool FileStoragePlugin::read_data(const std::uint64_t id, std::vector<std::uint8_t> &data)
 {
 	bool retVal = false;
-	std::ifstream file(dir + std::to_string(id), std::ios::in | std::ios::binary);
+	std::ifstream file(dir + std::to_string(id) + suffix, std::ios::binary);
 	if (file.is_open())
 	{
 		file.seekg(0, std::ios::end);
