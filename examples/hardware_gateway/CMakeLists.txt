@@ -11,7 +11,7 @@ if("WindowsSerial" IN_LIST CAN_DRIVER)
 
   target_link_libraries(
     MainAppExampleTarget PRIVATE isobus::Isobus isobus::HardwareIntegration
-                                Threads::Threads isobus::SystemTiming)
+                                 Threads::Threads isobus::Utility)
 endif()
 
 if("LinuxSerial" IN_LIST CAN_DRIVER AND "SocketCAN" IN_LIST CAN_DRIVER)
@@ -19,5 +19,5 @@ if("LinuxSerial" IN_LIST CAN_DRIVER AND "SocketCAN" IN_LIST CAN_DRIVER)
 
   target_link_libraries(
     GatewayExampleTarget PRIVATE isobus::Isobus isobus::HardwareIntegration
-                                Threads::Threads isobus::SystemTiming)
+                                 Threads::Threads isobus::Utility)
 endif()

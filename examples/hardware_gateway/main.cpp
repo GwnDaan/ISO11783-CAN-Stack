@@ -3,7 +3,7 @@
 #include "isobus/hardware_integration/windows_serial_interface.hpp"
 #include "isobus/isobus/can_network_manager.hpp"
 #include "isobus/isobus/can_partnered_control_function.hpp"
-#include "isobus/isobus/can_warning_logger.hpp"
+#include "isobus/isobus/can_stack_logger.hpp"
 
 #include <csignal>
 #include <iostream>
@@ -15,9 +15,9 @@ static constexpr std::uint8_t COM_PORT_INDEX = 10; ///< The COM port index to us
 class CustomLogger : public isobus::CANStackLogger
 {
 public:
-	void LogCANLibWarning(const std::string &text) override
+	void sink_CAN_stack_log(LoggingLevel level, const std::string &logText) override
 	{
-		std::cout << text << std::endl; // Write the text to stdout
+		std::cout << logText << std::endl; // Write the text to stdout
 	}
 };
 

@@ -56,7 +56,7 @@ public:
 
 private:
 	const std::uint8_t portNumber; ///< The file name of the port
-	HANDLE handler; ///< The handler for the serial port
+	HANDLE handle; ///< The handler for the serial port
 	bool connected; ///< If the serial port is connected
 };
 

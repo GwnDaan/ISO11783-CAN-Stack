@@ -8,8 +8,10 @@
 #include "object_pool_ids.h"
 
 #ifdef WIN32
-#include "isobus/hardware_integration/pcan_basic_windows_plugin.hpp"
-static PCANBasicWindowsPlugin canDriver(PCAN_USBBUS1);
+// #include "isobus/hardware_integration/pcan_basic_windows_plugin.hpp"
+// static PCANBasicWindowsPlugin canDriver(PCAN_USBBUS1);
+#include "isobus/hardware_integration/windows_serial_interface.hpp"
+static WindowsSerialInterface canDriver(10);
 #else
 #include "isobus/hardware_integration/socket_can_interface.hpp"
 static SocketCANInterface canDriver("can0");
