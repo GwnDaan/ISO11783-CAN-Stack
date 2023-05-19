@@ -617,8 +617,8 @@ namespace isobus
 				transmitSuccessful = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 				                                                                    nullptr,
 				                                                                    dataLength,
-				                                                                    myControlFunction.get(),
-				                                                                    partnerControlFunction.get(),
+				                                                                    myControlFunction,
+				                                                                    partnerControlFunction,
 				                                                                    CANIdentifier::CANPriority::PriorityLowest7,
 				                                                                    process_tx_callback,
 				                                                                    this,
@@ -1684,8 +1684,8 @@ namespace isobus
 
 	void TaskControllerClient::process_tx_callback(std::uint32_t parameterGroupNumber,
 	                                               std::uint32_t,
-	                                               InternalControlFunction *,
-	                                               ControlFunction *destinationControlFunction,
+	                                               std::shared_ptr<InternalControlFunction>,
+	                                               std::shared_ptr<ControlFunction> destinationControlFunction,
 	                                               bool successful,
 	                                               void *parentPointer)
 	{
@@ -1730,8 +1730,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_object_pool_activate() const
@@ -1755,8 +1755,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_pdack(std::uint16_t elementNumber, std::uint16_t ddi) const
@@ -1773,8 +1773,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_request_localization_label() const
@@ -1805,8 +1805,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_request_structure_label() const
@@ -1834,8 +1834,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_status() const
@@ -1852,8 +1852,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_value_command(std::uint16_t elementNumber, std::uint16_t ddi, std::uint32_t value) const
@@ -1870,8 +1870,8 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
-		                                                      partnerControlFunction.get());
+		                                                      myControlFunction,
+		                                                      partnerControlFunction);
 	}
 
 	bool TaskControllerClient::send_version_request() const
@@ -1886,7 +1886,7 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::WorkingSetMaster),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
+		                                                      myControlFunction,
 		                                                      nullptr);
 	}
 
@@ -1997,7 +1997,7 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ProcessData),
 		                                                      buffer.data(),
 		                                                      CAN_DATA_LENGTH,
-		                                                      myControlFunction.get(),
+		                                                      myControlFunction,
 		                                                      nullptr);
 	}
 

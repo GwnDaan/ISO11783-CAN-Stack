@@ -37,7 +37,7 @@ TestDeviceNAME.set_ecu_instance(0);
 TestDeviceNAME.set_function_instance(0);
 TestDeviceNAME.set_device_class_instance(0);
 TestDeviceNAME.set_manufacturer_code(64);
-TestInternalECU = std::make_shared<isobus::InternalControlFunction>(TestDeviceNAME, 0x1C, 0);
+TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
 ```
 
 As a note, a shared pointer is not required. A raw pointer, or even a concrete object would also work fine.

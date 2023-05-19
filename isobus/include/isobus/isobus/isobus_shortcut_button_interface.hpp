@@ -99,8 +99,8 @@ namespace isobus
 		bool protocol_transmit_message(std::uint32_t,
 		                               const std::uint8_t *,
 		                               std::uint32_t,
-		                               ControlFunction *,
-		                               ControlFunction *,
+		                               std::shared_ptr<ControlFunction>,
+		                               std::shared_ptr<ControlFunction>,
 		                               TransmitCompleteCallback,
 		                               void *,
 		                               DataChunkCallback) override;

@@ -17,10 +17,13 @@ TEST(CORE_TESTS, TestCreateAndDestroyPartners)
 	std::vector<isobus::NAMEFilter> vtNameFilters;
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 
-	isobus::PartneredControlFunction TestPartner1(0, vtNameFilters);
-	isobus::PartneredControlFunction *TestPartner2 = new isobus::PartneredControlFunction(0, vtNameFilters);
-	delete TestPartner2;
-	auto TestPartner3 = std::make_shared<isobus::PartneredControlFunction>(0, vtNameFilters);
+	auto testPartner1 = isobus::PartneredControlFunction::create(0, vtNameFilters);
+	auto testPartner2 = isobus::PartneredControlFunction::create(0, vtNameFilters);
+	EXPECT_TRUE(testPartner2->destroy());
+	auto TestPartner3 = isobus::PartneredControlFunction::create(0, vtNameFilters);
+
+	EXPECT_TRUE(testPartner1->destroy());
+	EXPECT_TRUE(TestPartner3->destroy());
 }
 
 TEST(CORE_TESTS, TestCreateAndDestroyICFs)
@@ -36,10 +39,17 @@ TEST(CORE_TESTS, TestCreateAndDestroyICFs)
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	isobus::InternalControlFunction TestIcf1(TestDeviceNAME, 0x1C, 0);
-	auto TestIcf2 = new isobus::InternalControlFunction(TestDeviceNAME, 0x80, 0);
-	delete TestIcf2;
-	auto TestIcf3 = std::make_shared<isobus::InternalControlFunction>(TestDeviceNAME, 0x81, 0);
+	auto testICF1 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+
+	TestDeviceNAME.set_ecu_instance(1);
+	auto testICF2 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x80, 0);
+	ASSERT_TRUE(testICF2->destroy());
+
+	TestDeviceNAME.set_ecu_instance(2);
+	auto testICF3 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x81, 0);
+
+	ASSERT_TRUE(testICF1->destroy());
+	ASSERT_TRUE(testICF3->destroy());
 }
 
 TEST(CORE_TESTS, BusloadTest)
@@ -94,7 +104,7 @@ TEST(CORE_TESTS, CommandedAddress)
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto testECU = std::make_shared<isobus::InternalControlFunction>(TestDeviceNAME, 0x43, 0);
+	auto testECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x43, 0);
 
 	CANMessageFrame testFrame;
 

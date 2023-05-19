@@ -41,7 +41,7 @@ The CAN stack can provide your application with a callback whenever it receives 
 Here's an example callback that is meant to handle PROPA PGN (0xEF00) requests, and tells the CAN stack to send a positive acknowledgement back to the requestor.
 ```
 bool example_proprietary_a_pgn_request_handler(std::uint32_t parameterGroupNumber,
-                                               isobus::ControlFunction *,
+                                               std::shared_ptr<isobus::ControlFunction> ,
                                                bool &acknowledge,
                                                isobus::AcknowledgementType &acknowledgeType,
                                                void *)
@@ -126,7 +126,7 @@ Here's an example callback that is meant to handle PROPA PGN (0xEF00) requests f
 
 ```
 bool example_proprietary_a_request_for_repetition_rate_handler(std::uint32_t parameterGroupNumber,
-                                                               isobus::ControlFunction *requestingControlFunction,
+                                                               std::shared_ptr<isobus::ControlFunction> requestingControlFunction,
                                                                std::uint32_t repetitionRate,
                                                                void *)
 {

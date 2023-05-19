@@ -90,8 +90,8 @@ namespace isobus
 	bool ShortcutButtonInterface::protocol_transmit_message(std::uint32_t,
 	                                                        const std::uint8_t *,
 	                                                        std::uint32_t,
-	                                                        ControlFunction *,
-	                                                        ControlFunction *,
+	                                                        std::shared_ptr<ControlFunction>,
+	                                                        std::shared_ptr<ControlFunction>,
 	                                                        TransmitCompleteCallback,
 	                                                        void *,
 	                                                        DataChunkCallback)
@@ -233,7 +233,7 @@ namespace isobus
 		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AllImplementsStopOperationsSwitchState),
 		                                                      buffer.data(),
 		                                                      buffer.size(),
-		                                                      sourceControlFunction.get(),
+		                                                      sourceControlFunction,
 		                                                      nullptr,
 		                                                      CANIdentifier::Priority3);
 	}
