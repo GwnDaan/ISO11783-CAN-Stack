@@ -100,7 +100,7 @@ So, our updated tutorial program now should look like this:
 
       // Set up the hardware layer to use SocketCAN interface on channel "can0"
       std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-      isobus::CANHardwareInterface::set_number_of_can_channels(1);
+      isobus::auto network = std::make_shared<CANNetworkManager>();
       isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
       if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -125,7 +125,7 @@ So, our updated tutorial program now should look like this:
       myNAME.set_manufacturer_code(64);
 
       // Create our InternalControlFunction
-      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
       // Define a NAME filter for our partner
       std::vector<isobus::NAMEFilter> myPartnerFilter;
@@ -136,17 +136,17 @@ So, our updated tutorial program now should look like this:
       isobus::CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(0xEF00, propa_callback, nullptr);
 
       // Create our PartneredControlFunction
-      myPartner = isobus::PartneredControlFunction::create(0, myPartnerFilter);
+      myPartner = isobus::PartneredControlFunction::create(network, myPartnerFilter);
 
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
       std::array<std::uint8_t, isobus::CAN_DATA_LENGTH> messageData = {0}; // Data is just all zeros
 
       // Send a message to the broadcast address
-      isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
+      isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
 
       // Send a message to our partner (if it is present)
-      isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
+      isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
 
       while (true)
       {

@@ -19,16 +19,7 @@
 
 namespace isobus
 {
-	FastPacketProtocol::FastPacketProtocolSession::FastPacketProtocolSession(Direction sessionDirection, std::uint8_t canPortIndex) :
-	  sessionMessage(canPortIndex),
-	  sessionCompleteCallback(nullptr),
-	  frameChunkCallback(nullptr),
-	  parent(nullptr),
-	  timestamp_ms(0),
-	  lastPacketNumber(0),
-	  packetCount(0),
-	  processedPacketsThisSession(0),
-	  sequenceNumber(0),
+	FastPacketProtocol::FastPacketProtocolSession::FastPacketProtocolSession(Direction sessionDirection) :
 	  sessionDirection(sessionDirection)
 	{
 	}
@@ -49,33 +40,50 @@ namespace isobus
 		return sessionMessage.get_data_length();
 	}
 
-	FastPacketProtocol::FastPacketProtocolSession::~FastPacketProtocolSession()
-	{
-	}
-
-	void FastPacketProtocol::initialize(CANLibBadge<CANNetworkManager>)
+	void FastPacketProtocol::initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>)
 	{
 		if (!initialized)
 		{
+			associatedNetwork = network;
 			initialized = true;
 		}
 	}
 
 	void FastPacketProtocol::register_multipacket_message_callback(std::uint32_t parameterGroupNumber, CANLibCallback callback, void *parent, std::shared_ptr<InternalControlFunction> internalControlFunction)
 	{
-		parameterGroupNumberCallbacks.push_back(ParameterGroupNumberCallbackData(parameterGroupNumber, callback, parent, internalControlFunction));
-		CANNetworkManager::CANNetwork.add_protocol_parameter_group_number_callback(parameterGroupNumber, process_message, this);
+		if (initialized)
+		{
+			if (auto network = associatedNetwork.lock())
+			{
+				parameterGroupNumberCallbacks.push_back(ParameterGroupNumberCallbackData(parameterGroupNumber, callback, parent, internalControlFunction));
+				network->add_protocol_parameter_group_number_callback(parameterGroupNumber, process_message, this);
+			}
+			else
+			{
+				CANStackLogger::error("[FP] Tried to register message callback on a network that no longer exists.");
+			}
+		}
+		else
+		{
+			CANStackLogger::error("FastPacketProtocol::register_multipacket_message_callback() called before initialization.");
+		}
 	}
 
 	void FastPacketProtocol::remove_multipacket_message_callback(std::uint32_t parameterGroupNumber, CANLibCallback callback, void *parent, std::shared_ptr<InternalControlFunction> internalControlFunction)
 	{
-		ParameterGroupNumberCallbackData tempObject(parameterGroupNumber, callback, parent, internalControlFunction);
-		auto callbackLocation = std::find(parameterGroupNumberCallbacks.begin(), parameterGroupNumberCallbacks.end(), tempObject);
-		if (parameterGroupNumberCallbacks.end() != callbackLocation)
+		if (initialized)
 		{
-			parameterGroupNumberCallbacks.erase(callbackLocation);
+			ParameterGroupNumberCallbackData tempObject(parameterGroupNumber, callback, parent, internalControlFunction);
+			auto callbackLocation = std::find(parameterGroupNumberCallbacks.begin(), parameterGroupNumberCallbacks.end(), tempObject);
+			if (parameterGroupNumberCallbacks.end() != callbackLocation)
+			{
+				parameterGroupNumberCallbacks.erase(callbackLocation);
+				if (auto network = associatedNetwork.lock())
+				{
+					network->remove_protocol_parameter_group_number_callback(parameterGroupNumber, process_message, this);
+				}
+			}
 		}
-		CANNetworkManager::CANNetwork.remove_protocol_parameter_group_number_callback(parameterGroupNumber, process_message, this);
 	}
 
 	bool FastPacketProtocol::send_multipacket_message(std::uint32_t parameterGroupNumber,
@@ -102,7 +110,7 @@ namespace isobus
 
 			if (!get_session(tempSession, parameterGroupNumber, source, destination))
 			{
-				tempSession = new FastPacketProtocolSession(FastPacketProtocolSession::Direction::Transmit, source->get_can_port());
+				tempSession = new FastPacketProtocolSession(FastPacketProtocolSession::Direction::Transmit);
 				tempSession->sessionMessage.set_source_control_function(source);
 				tempSession->sessionMessage.set_destination_control_function(destination);
 				tempSession->sessionMessage.set_identifier(CANIdentifier(CANIdentifier::Type::Extended, parameterGroupNumber, priority, (destination == nullptr ? 0xFF : destination->get_address()), source->get_address()));
@@ -317,7 +325,7 @@ namespace isobus
 							if (messageData[1] <= MAX_PROTOCOL_MESSAGE_LENGTH)
 							{
 								// This is the beginning of a new message
-								currentSession = new FastPacketProtocolSession(FastPacketProtocolSession::Direction::Receive, message.get_can_port_index());
+								currentSession = new FastPacketProtocolSession(FastPacketProtocolSession::Direction::Receive);
 								currentSession->frameChunkCallback = nullptr;
 								if (messageData[1] >= PROTOCOL_BYTES_PER_FRAME - 1)
 								{
@@ -488,14 +496,14 @@ namespace isobus
 								}
 							}
 						}
-						if (CANNetworkManager::CANNetwork.send_can_message(session->sessionMessage.get_identifier().get_parameter_group_number(),
-						                                                   dataBuffer.data(),
-						                                                   CAN_DATA_LENGTH,
-						                                                   std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
-						                                                   session->sessionMessage.get_destination_control_function(),
-						                                                   session->sessionMessage.get_identifier().get_priority(),
-						                                                   nullptr,
-						                                                   nullptr))
+						if (CANNetworkManager::send_can_message(session->sessionMessage.get_identifier().get_parameter_group_number(),
+						                                        dataBuffer.data(),
+						                                        CAN_DATA_LENGTH,
+						                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
+						                                        session->sessionMessage.get_destination_control_function(),
+						                                        session->sessionMessage.get_identifier().get_priority(),
+						                                        nullptr,
+						                                        nullptr))
 						{
 							session->processedPacketsThisSession++;
 							session->timestamp_ms = SystemTiming::get_timestamp_ms();

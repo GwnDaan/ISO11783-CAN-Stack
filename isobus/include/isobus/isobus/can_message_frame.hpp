@@ -12,9 +12,11 @@
 #define CAN_MESSAGE_FRAME_HPP
 
 #include <cstdint>
+#include <memory>
 
 namespace isobus
 {
+	class CANNetworkManager;
 	//================================================================================================
 	/// @class CANMessageFrame
 	///
@@ -29,7 +31,6 @@ namespace isobus
 
 		std::uint64_t timestamp_us; ///< A microsecond timestamp
 		std::uint32_t identifier; ///< The 32 bit identifier of the frame
-		std::uint8_t channel; ///< The CAN channel index associated with the frame
 		std::uint8_t data[8]; ///< The data payload of the frame
 		std::uint8_t dataLength; ///< The length of the data used in the frame
 		bool isExtendedFrame; ///< Denotes if the frame is extended format

@@ -13,9 +13,12 @@
 #include "isobus/isobus/can_NAME.hpp"
 #include "isobus/isobus/can_constants.hpp"
 
+#include <memory>
+
 namespace isobus
 {
 	class CANMessage; ///< Forward declare CANMessage
+	class CANNetworkManager; ///< Forward declare CANNetworkManager
 
 	//================================================================================================
 	/// @class AddressClaimStateMachine
@@ -46,8 +49,8 @@ namespace isobus
 		/// @brief The constructor of the state machine class
 		/// @param[in] preferredAddressValue The address you prefer to claim
 		/// @param[in] ControlFunctionNAME The NAME you want to claim
-		/// @param[in] portIndex The CAN channel index to claim on
-		AddressClaimStateMachine(std::uint8_t preferredAddressValue, NAME ControlFunctionNAME, std::uint8_t portIndex);
+		/// @param[in] network The network that the state machine is associated with
+		AddressClaimStateMachine(std::uint8_t preferredAddressValue, NAME ControlFunctionNAME, std::shared_ptr<CANNetworkManager> network);
 
 		/// @brief The destructor for the address claim state machine
 		~AddressClaimStateMachine();
@@ -96,7 +99,7 @@ namespace isobus
 		NAME m_isoname; ///< The ISO NAME to claim as
 		State m_currentState = State::None; ///< The address claim state machine state
 		std::uint32_t m_timestamp_ms = 0; ///< A generic timestamp in milliseconds used to find timeouts
-		std::uint8_t m_portIndex; ///< The CAN channel index to claim on
+		std::weak_ptr<CANNetworkManager> associatedNetwork; ///< A weak pointer to the network manager that the address claimer is on
 		std::uint8_t m_preferredAddress; ///< The address we'd prefer to claim as (we may not get it)
 		std::uint8_t m_randomClaimDelay_ms; ///< The random delay as required by the ISO11783 standard
 		std::uint8_t m_claimedAddress = NULL_CAN_ADDRESS; ///< The actual address we ended up claiming

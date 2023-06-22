@@ -18,16 +18,16 @@ namespace isobus
 	CANLibProtocol::CANLibProtocol() :
 	  initialized(false)
 	{
-		CANNetworkManager::CANNetwork.protocolList.push_back(this);
+		CANNetworkManager::protocolList.push_back(this);
 	}
 
 	CANLibProtocol::~CANLibProtocol()
 	{
-		auto protocolLocation = find(CANNetworkManager::CANNetwork.protocolList.begin(), CANNetworkManager::CANNetwork.protocolList.end(), this);
+		auto protocolLocation = find(CANNetworkManager::protocolList.begin(), CANNetworkManager::protocolList.end(), this);
 
-		if (CANNetworkManager::CANNetwork.protocolList.end() != protocolLocation)
+		if (CANNetworkManager::protocolList.end() != protocolLocation)
 		{
-			CANNetworkManager::CANNetwork.protocolList.erase(protocolLocation);
+			CANNetworkManager::protocolList.erase(protocolLocation);
 		}
 	}
 
@@ -40,19 +40,19 @@ namespace isobus
 	{
 		returnedProtocol = nullptr;
 
-		if (index < CANNetworkManager::CANNetwork.protocolList.size())
+		if (index < CANNetworkManager::protocolList.size())
 		{
-			returnedProtocol = CANNetworkManager::CANNetwork.protocolList[index];
+			returnedProtocol = CANNetworkManager::protocolList[index];
 		}
 		return (nullptr != returnedProtocol);
 	}
 
 	std::uint32_t CANLibProtocol::get_number_protocols()
 	{
-		return CANNetworkManager::CANNetwork.protocolList.size();
+		return CANNetworkManager::protocolList.size();
 	}
 
-	void CANLibProtocol::initialize(CANLibBadge<CANNetworkManager>)
+	void CANLibProtocol::initialize(std::shared_ptr<CANNetworkManager>, CANLibBadge<CANNetworkManager>)
 	{
 		initialized = true;
 	}

@@ -12,7 +12,7 @@ TEST(DIAGNOSTIC_PROTOCOL_TESTS, DM13TestNetworkParsing)
 	                     CANIdentifier::CANPriority::PriorityDefault6,
 	                     0xFF,
 	                     0x80);
-	CANMessage testDM13Message(0);
+	CANMessage testDM13Message;
 	testDM13Message.set_identifier(testID);
 	testDM13Message.set_data_size(8);
 	EXPECT_EQ(true, DiagnosticProtocol::parse_j1939_network_states(testDM13Message, testNetworkStates));
@@ -26,7 +26,7 @@ TEST(DIAGNOSTIC_PROTOCOL_TESTS, TestInvalidDM13Rejection)
 	                     CANIdentifier::CANPriority::PriorityDefault6,
 	                     0xFF,
 	                     0x80);
-	CANMessage testDM13Message(0);
+	CANMessage testDM13Message;
 	testDM13Message.set_identifier(testID);
 	testDM13Message.set_data_size(4);
 	EXPECT_EQ(false, DiagnosticProtocol::parse_j1939_network_states(testDM13Message, testNetworkStates));
@@ -36,7 +36,7 @@ TEST(DIAGNOSTIC_PROTOCOL_TESTS, CreateAndDestroyProtocolObjects)
 {
 	NAME TestDeviceNAME(0);
 
-	auto TestInternalECU = InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+	auto TestInternalECU = InternalControlFunction::create(TestDeviceNAME, 0x1C, nullptr);
 
 	DiagnosticProtocol::assign_diagnostic_protocol_to_internal_control_function(TestInternalECU);
 	DiagnosticProtocol *diagnosticProtocol = DiagnosticProtocol::get_diagnostic_protocol_by_internal_control_function(TestInternalECU);

@@ -20,7 +20,7 @@ Let's discuss how these components work. Then, we'll go over how you can write y
 The CAN stack relies on a couple of functions being defined externally to function. This boundary keeps the core stack completely isolated from the hardware layer. Thus, the content of the `isobus` folder can function entirely on its own if that meets your needs better than using the built in hardware interface layer.
 These functions are:
 
-* `bool send_can_message_frame_to_hardware(const CANMessageFrame &frame);`
+* `bool send_can_message_frame_to_hardware(const std::weak_ptr<CANNetworkManager> network, const CANMessageFrame &frame);`
 	- This is how the CAN stack will send a frame to the actual hardware.
 	- This is already defined in `CANHardwareInterface` and wraps the actual CAN driver calls.
 	- `CANHardwareInterface` Stores these frames in a queue that will be fed to your underlying CAN driver.
@@ -32,7 +32,7 @@ These functions are:
 	- The `CANHardwareInterface` will take care of calling this. You just need to tell it what function to call, like this `CANHardwareInterface::add_raw_can_message_rx_callback(raw_can_glue, nullptr);`
 
 * `void update_CAN_network()`
-	- You need some void function like this that calls `isobus::CANNetworkManager::CANNetwork.update();` periodically.
+	- You need some void function like this that calls `isobus::network->update();` periodically.
 	- The `CANHardwareInterface` provides this periodic update. You just need to add your function, like this `CANHardwareInterface::add_can_lib_update_callback(update_CAN_network, nullptr);`
 
 ### The CANHardwareInterface

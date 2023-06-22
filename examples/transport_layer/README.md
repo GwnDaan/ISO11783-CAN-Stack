@@ -37,7 +37,7 @@ TestDeviceNAME.set_ecu_instance(0);
 TestDeviceNAME.set_function_instance(0);
 TestDeviceNAME.set_device_class_instance(0);
 TestDeviceNAME.set_manufacturer_code(64);
-TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
 ```
 
 As a note, a shared pointer is not required. A raw pointer, or even a concrete object would also work fine.
@@ -83,7 +83,7 @@ Here is how the example sets up Socket CAN:
 ```
 void update_CAN_network()
 {
-	isobus::CANNetworkManager::CANNetwork.update();
+	isobus::network->update();
 }
 
 void raw_can_glue(isobus::CANMessageFrame &rawFrame, void *parentPointer)
@@ -92,7 +92,7 @@ void raw_can_glue(isobus::CANMessageFrame &rawFrame, void *parentPointer)
 }
 
 std::shared_ptr<SocketCANInterface> canDriver = std::make_shared<SocketCANInterface>("can0");
-CANHardwareInterface::set_number_of_can_channels(1);
+auto network = std::make_shared<CANNetworkManager>();
 CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 CANHardwareInterface::start();
 
@@ -108,12 +108,12 @@ CANHardwareInterface::stop();
 
 ## Sending a basic CAN message
 
-To send a basic CAN message, you need to first create a payload. This is most commonly an array. Then, just call the generic `send_can_message` function located on the public interface of the network manager. `isobus::CANNetworkManager::CANNetwork.send_can_message`
+To send a basic CAN message, you need to first create a payload. This is most commonly an array. Then, just call the generic `send_can_message` function located on the public interface of the network manager. `isobus::CANNetworkManager::send_can_message`
 
 Like this:
 ```
 	std::uint8_t buffer[CAN_DATA_LENGTH] = { 0 };
-	CANNetworkManager::CANNetwork.send_can_message(PGN, buffer, CAN_DATA_LENGTH, source, partner);
+	CANNetworkManager::send_can_message(PGN, buffer, CAN_DATA_LENGTH, source, partner);
 ```
 
 Calling `send_can_message` with no partner (`nullptr`) will send it to the global address, `0xFF`.
@@ -133,7 +133,7 @@ The example attempts to send many of these messages, one for each possible data 
 for (std::uint32_t i = 9; i <= MAX_TP_SIZE_BYTES; i++)
 {
     // Send message
-    if (isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, TPTestBuffer, i, TestInternalECU.get(), TestPartner))
+    if (isobus::CANNetworkManager::send_can_message(0xEF00, TPTestBuffer, i, TestInternalECU.get(), TestPartner))
     {
         cout << "Started TP CM Session with length " << i << endl;
     }
@@ -162,7 +162,7 @@ The example attempts to send many of these messages, one for each possible data 
 for (std::uint32_t i = 9; i <= MAX_TP_SIZE_BYTES; i++)
 {
     // Send message
-    if (isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, TPTestBuffer, i, TestInternalECU.get()))
+    if (isobus::CANNetworkManager::send_can_message(0xEF00, TPTestBuffer, i, TestInternalECU.get()))
     {
         cout << "Started BAM Session with length " << i << endl;
     }
@@ -184,7 +184,7 @@ The example attempts to send one ETP message:
 ```
 // ETP Example
 // Send one ETP message
-if (isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, ETPTestBuffer, ETP_TEST_SIZE, TestInternalECU.get(), TestPartner))
+if (isobus::CANNetworkManager::send_can_message(0xEF00, ETPTestBuffer, ETP_TEST_SIZE, TestInternalECU.get(), TestPartner))
 {
     cout << "Started ETP Session with length " << ETP_TEST_SIZE << endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));

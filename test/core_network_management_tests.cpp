@@ -17,10 +17,10 @@ TEST(CORE_TESTS, TestCreateAndDestroyPartners)
 	std::vector<isobus::NAMEFilter> vtNameFilters;
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 
-	auto testPartner1 = isobus::PartneredControlFunction::create(0, vtNameFilters);
-	auto testPartner2 = isobus::PartneredControlFunction::create(0, vtNameFilters);
+	auto testPartner1 = isobus::PartneredControlFunction::create(nullptr, vtNameFilters);
+	auto testPartner2 = isobus::PartneredControlFunction::create(nullptr, vtNameFilters);
 	EXPECT_TRUE(testPartner2->destroy());
-	auto TestPartner3 = isobus::PartneredControlFunction::create(0, vtNameFilters);
+	auto TestPartner3 = isobus::PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	EXPECT_TRUE(testPartner1->destroy());
 	EXPECT_TRUE(TestPartner3->destroy());
@@ -39,14 +39,14 @@ TEST(CORE_TESTS, TestCreateAndDestroyICFs)
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto testICF1 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+	auto testICF1 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, nullptr);
 
 	TestDeviceNAME.set_ecu_instance(1);
-	auto testICF2 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x80, 0);
+	auto testICF2 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x80, nullptr);
 	ASSERT_TRUE(testICF2->destroy());
 
 	TestDeviceNAME.set_ecu_instance(2);
-	auto testICF3 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x81, 0);
+	auto testICF3 = isobus::InternalControlFunction::create(TestDeviceNAME, 0x81, nullptr);
 
 	ASSERT_TRUE(testICF1->destroy());
 	ASSERT_TRUE(testICF3->destroy());
@@ -54,34 +54,33 @@ TEST(CORE_TESTS, TestCreateAndDestroyICFs)
 
 TEST(CORE_TESTS, BusloadTest)
 {
-	EXPECT_EQ(0.0f, CANNetworkManager::CANNetwork.get_estimated_busload(0)); // This test runs early in the testing, so load should be zero.
-	EXPECT_EQ(0.0f, CANNetworkManager::CANNetwork.get_estimated_busload(200)); // Invalid channel should return zero load
+	CANNetworkManager network;
+	EXPECT_EQ(0.0f, network.get_estimated_busload()); // This test runs early in the testing, so load should be zero.
 
 	// Send a bunch of messages through the receive process
 	CANMessageFrame testFrame;
 	testFrame.dataLength = 8;
-	testFrame.channel = 0;
 	testFrame.isExtendedFrame = true;
 	testFrame.identifier = 0x18EFFFFE;
 	memset(testFrame.data, 0, sizeof(testFrame.data));
 
-	CANNetworkManager::CANNetwork.update(); // Make sure the network manager is initialized
+	network.update(); // Make sure the network manager is initialized
 	for (std::uint_fast8_t i = 0; i < 25; i++)
 	{
-		CANNetworkManager::process_receive_can_message_frame(testFrame); // Send a bunch of junk messages
+		network.process_receive_can_message_frame(testFrame); // Send a bunch of junk messages
 	}
 	testFrame.isExtendedFrame = false;
 	testFrame.identifier = 0x7F;
 	for (std::uint_fast8_t i = 0; i < 25; i++)
 	{
-		CANNetworkManager::process_receive_can_message_frame(testFrame); // Send a bunch of junk messages
+		network.process_receive_can_message_frame(testFrame); // Send a bunch of junk messages
 	}
 	std::this_thread::sleep_for(std::chrono::milliseconds(101));
-	CANNetworkManager::CANNetwork.update();
+	network.update();
 
 	// Bus load should be non zero, and less than 100%
-	EXPECT_NE(0.0f, CANNetworkManager::CANNetwork.get_estimated_busload(0));
-	EXPECT_LT(CANNetworkManager::CANNetwork.get_estimated_busload(0), 100.0f);
+	EXPECT_NE(0.0f, network.get_estimated_busload());
+	EXPECT_LT(network.get_estimated_busload(), 100.0f);
 }
 
 TEST(CORE_TESTS, CommandedAddress)
@@ -89,8 +88,8 @@ TEST(CORE_TESTS, CommandedAddress)
 	VirtualCANPlugin testPlugin;
 	testPlugin.open();
 
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, std::make_shared<VirtualCANPlugin>());
+	auto network = std::make_shared<CANNetworkManager>();
+	CANHardwareInterface::assign_can_channel_frame_handler(network, std::make_shared<VirtualCANPlugin>());
 	CANHardwareInterface::start();
 
 	isobus::NAME TestDeviceNAME(0);
@@ -104,7 +103,7 @@ TEST(CORE_TESTS, CommandedAddress)
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto testECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x43, 0);
+	auto testECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x43, network);
 
 	CANMessageFrame testFrame;
 
@@ -120,7 +119,6 @@ TEST(CORE_TESTS, CommandedAddress)
 
 	// Force claim some other ECU
 	testFrame.dataLength = 8;
-	testFrame.channel = 0;
 	testFrame.isExtendedFrame = true;
 	testFrame.identifier = 0x18EEFFF8;
 	testFrame.data[0] = 0x03;
@@ -131,8 +129,8 @@ TEST(CORE_TESTS, CommandedAddress)
 	testFrame.data[5] = 0x89;
 	testFrame.data[6] = 0x00;
 	testFrame.data[7] = 0xA0;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	// Let's construct a short BAM session for commanded address
 	// We'll ignore the 50ms timing for the unit test
@@ -146,7 +144,7 @@ TEST(CORE_TESTS, CommandedAddress)
 	testFrame.data[5] = 0xD8; // PGN LSB
 	testFrame.data[6] = 0xFE; // PGN middle byte
 	testFrame.data[7] = 0x00; // PGN MSB
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
+	network->process_receive_can_message_frame(testFrame);
 
 	std::uint64_t rawNAME = testECU->get_NAME().get_full_name();
 
@@ -160,7 +158,7 @@ TEST(CORE_TESTS, CommandedAddress)
 	testFrame.data[5] = static_cast<std::uint8_t>((rawNAME >> 32) & 0xFF);
 	testFrame.data[6] = static_cast<std::uint8_t>((rawNAME >> 40) & 0xFF);
 	testFrame.data[7] = static_cast<std::uint8_t>((rawNAME >> 48) & 0xFF);
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
+	network->process_receive_can_message_frame(testFrame);
 
 	// data packet 2
 	testFrame.data[0] = 2;
@@ -171,8 +169,8 @@ TEST(CORE_TESTS, CommandedAddress)
 	testFrame.data[5] = 0xFF;
 	testFrame.data[6] = 0xFF;
 	testFrame.data[7] = 0xFF;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
 	EXPECT_EQ(0x04, testECU->get_address());

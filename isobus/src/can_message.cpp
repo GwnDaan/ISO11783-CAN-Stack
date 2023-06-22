@@ -14,10 +14,6 @@
 
 namespace isobus
 {
-	CANMessage::CANMessage(std::uint8_t CANPort) :
-	  CANPortIndex(CANPort)
-	{
-	}
 
 	CANMessage::Type CANMessage::get_type() const
 	{
@@ -47,11 +43,6 @@ namespace isobus
 	CANIdentifier CANMessage::get_identifier() const
 	{
 		return identifier;
-	}
-
-	std::uint8_t CANMessage::get_can_port_index() const
-	{
-		return CANPortIndex;
 	}
 
 	void CANMessage::set_data(const std::uint8_t *dataBuffer, std::uint32_t length)

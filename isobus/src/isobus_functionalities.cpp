@@ -857,7 +857,7 @@ namespace isobus
 		{
 			std::vector<std::uint8_t> messageBuffer;
 			targetInterface->get_message_content(messageBuffer);
-			transmitSuccessful = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ControlFunctionFunctionalities),
+			transmitSuccessful = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ControlFunctionFunctionalities),
 			                                                                    messageBuffer.data(),
 			                                                                    messageBuffer.size(),
 			                                                                    targetInterface->myControlFunction,

@@ -21,18 +21,18 @@ namespace isobus
 	std::vector<std::shared_ptr<PartneredControlFunction>> PartneredControlFunction::partneredControlFunctionList;
 	bool PartneredControlFunction::anyPartnerNeedsInitializing = false;
 
-	PartneredControlFunction::PartneredControlFunction(std::uint8_t CANPort, const std::vector<NAMEFilter> NAMEFilters) :
-	  ControlFunction(NAME(0), NULL_CAN_ADDRESS, CANPort, Type::Partnered),
+	PartneredControlFunction::PartneredControlFunction(std::shared_ptr<CANNetworkManager> network, const std::vector<NAMEFilter> NAMEFilters) :
+	  ControlFunction(NAME(0), NULL_CAN_ADDRESS, network, Type::Partnered),
 	  NAMEFilterList(NAMEFilters)
 	{
 		const std::lock_guard<std::mutex> lock(ControlFunction::controlFunctionProcessingMutex);
 		anyPartnerNeedsInitializing = true;
 	}
 
-	std::shared_ptr<PartneredControlFunction> PartneredControlFunction::create(std::uint8_t CANPort, const std::vector<NAMEFilter> NAMEFilters)
+	std::shared_ptr<PartneredControlFunction> PartneredControlFunction::create(std::shared_ptr<CANNetworkManager> network, const std::vector<NAMEFilter> NAMEFilters)
 	{
 		// Unfortunately, we can't use `std::make_shared` here because the constructor is meant to be protected
-		auto createdControlFunction = std::shared_ptr<PartneredControlFunction>(new PartneredControlFunction(CANPort, NAMEFilters));
+		auto createdControlFunction = std::shared_ptr<PartneredControlFunction>(new PartneredControlFunction(network, NAMEFilters));
 		partneredControlFunctionList.push_back(createdControlFunction);
 		return createdControlFunction;
 	}

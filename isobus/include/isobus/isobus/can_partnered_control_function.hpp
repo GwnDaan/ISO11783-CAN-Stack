@@ -39,9 +39,9 @@ namespace isobus
 	{
 	public:
 		/// @brief The factory function to construct a partnered control function
-		/// @param[in] CANPort The CAN channel associated with this control function definition
+		/// @param[in] network A pointer to the network manager that owns this control function
 		/// @param[in] NAMEFilters A list of filters that describe the identity of the CF based on NAME components
-		static std::shared_ptr<PartneredControlFunction> create(std::uint8_t CANPort, const std::vector<NAMEFilter> NAMEFilters);
+		static std::shared_ptr<PartneredControlFunction> create(std::shared_ptr<CANNetworkManager> network, const std::vector<NAMEFilter> NAMEFilters);
 
 		/// @brief Deleted copy constructor for PartneredControlFunction to avoid slicing
 		PartneredControlFunction(PartneredControlFunction &) = delete;
@@ -111,9 +111,9 @@ namespace isobus
 		friend class CANNetworkManager; ///< Allows the network manager to use get_parameter_group_number_callback
 
 		/// @brief the constructor for a PartneredControlFunction, which is called by the factory function
-		/// @param[in] CANPort The CAN channel associated with this control function definition
+		/// @param[in] network A pointer to the network manager that owns this control function
 		/// @param[in] NAMEFilters A list of filters that describe the identity of the CF based on NAME components
-		PartneredControlFunction(std::uint8_t CANPort, const std::vector<NAMEFilter> NAMEFilters);
+		PartneredControlFunction(std::shared_ptr<CANNetworkManager> network, const std::vector<NAMEFilter> NAMEFilters);
 
 		/// @brief Make inherited factory function private so that it can't be called
 		static std::shared_ptr<ControlFunction> create(NAME NAMEValue, std::uint8_t addressValue, std::uint8_t CANPort) = delete;

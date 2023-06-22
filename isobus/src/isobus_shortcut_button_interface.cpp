@@ -143,11 +143,11 @@ namespace isobus
 		}
 	}
 
-	void ShortcutButtonInterface::initialize(CANLibBadge<CANNetworkManager>)
+	void ShortcutButtonInterface::initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>)
 	{
-		CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AllImplementsStopOperationsSwitchState),
-		                                                                         process_rx_message,
-		                                                                         this);
+		network->add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AllImplementsStopOperationsSwitchState),
+		                                                    process_rx_message,
+		                                                    this);
 		initialized = true;
 	}
 
@@ -230,11 +230,11 @@ namespace isobus
 			static_cast<std::uint8_t>(0xFC | static_cast<std::uint8_t>(commandedState))
 		};
 
-		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AllImplementsStopOperationsSwitchState),
-		                                                      buffer.data(),
-		                                                      buffer.size(),
-		                                                      sourceControlFunction,
-		                                                      nullptr,
-		                                                      CANIdentifier::Priority3);
+		return CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AllImplementsStopOperationsSwitchState),
+		                                           buffer.data(),
+		                                           buffer.size(),
+		                                           sourceControlFunction,
+		                                           nullptr,
+		                                           CANIdentifier::Priority3);
 	}
 }

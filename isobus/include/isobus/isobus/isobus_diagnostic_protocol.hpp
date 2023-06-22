@@ -231,7 +231,7 @@ namespace isobus
 		static bool parse_j1939_network_states(const CANMessage &message, std::uint32_t &networkStates);
 
 		/// @brief The protocol's initializer function
-		void initialize(CANLibBadge<CANNetworkManager>) override;
+		void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>) override;
 
 		/// @brief Enables the protocol to run in J1939 mode instead of ISO11783 mode
 		/// @details See ISO11783-12 and J1939-73 for a complete explanation of the differences

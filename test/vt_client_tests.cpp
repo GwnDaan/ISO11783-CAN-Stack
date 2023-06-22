@@ -96,7 +96,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, InitializeAndInitialState)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -137,7 +137,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, VTStatusMessage)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -145,7 +145,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, VTStatusMessage)
 	EXPECT_EQ(NULL_OBJECT_ID, clientUnderTest.get_visible_data_mask());
 	EXPECT_EQ(NULL_OBJECT_ID, clientUnderTest.get_visible_soft_key_mask());
 
-	CANMessage testMessage(0);
+	CANMessage testMessage;
 	testMessage.set_identifier(CANIdentifier(CANIdentifier::Type::Extended, static_cast<std::uint32_t>(CANLibParameterGroupNumber::VirtualTerminalToECU), CANIdentifier::PriorityDefault6, 0, 0));
 
 	std::uint8_t testContent[] = {
@@ -194,7 +194,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, FullPoolAutoscalingWithVector)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -250,7 +250,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, FullPoolAutoscalingWithDataChunkCallbacks)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -299,7 +299,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, FullPoolAutoscalingWithPointer)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -350,7 +350,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, ObjectMetadataTests)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 
 	DerivedTestVTClient clientUnderTest(vtPartner, internalECU);
 
@@ -836,8 +836,8 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	VirtualCANPlugin serverVT;
 	serverVT.open();
 
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, std::make_shared<VirtualCANPlugin>());
+	auto network = std::make_shared<CANNetworkManager>();
+	CANHardwareInterface::assign_can_channel_frame_handler(network, std::make_shared<VirtualCANPlugin>());
 	CANHardwareInterface::start();
 
 	NAME clientNAME(0);
@@ -864,7 +864,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	const isobus::NAMEFilter testFilter(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 	vtNameFilters.push_back(testFilter);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(network, vtNameFilters);
 
 	// Force claim a partner
 	NAME serverNAME(0);
@@ -876,7 +876,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	std::uint64_t serverFullNAME = serverNAME.get_full_name();
 
 	testFrame.dataLength = 8;
-	testFrame.channel = 0;
 	testFrame.isExtendedFrame = true;
 	testFrame.identifier = 0x18EEFF26;
 	testFrame.data[0] = static_cast<std::uint8_t>(serverFullNAME & 0xFF);
@@ -887,7 +886,7 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	testFrame.data[5] = static_cast<std::uint8_t>((serverFullNAME >> 40) & 0xFF);
 	testFrame.data[6] = static_cast<std::uint8_t>((serverFullNAME >> 48) & 0xFF);
 	testFrame.data[7] = static_cast<std::uint8_t>((serverFullNAME >> 56) & 0xFF);
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
+	network->process_receive_can_message_frame(testFrame);
 
 	DerivedTestVTClient interfaceUnderTest(vtPartner, internalECU);
 
@@ -906,7 +905,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 
 	serverVT.read_frame(testFrame);
 
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);
@@ -923,7 +921,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	interfaceUnderTest.send_hide_show_object(1234, VirtualTerminalClient::HideShowObjectCommand::HideObject);
 
 	serverVT.read_frame(testFrame);
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);
@@ -939,7 +936,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 
 	interfaceUnderTest.send_hide_show_object(1234, VirtualTerminalClient::HideShowObjectCommand::ShowObject);
 	serverVT.read_frame(testFrame);
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);
@@ -955,7 +951,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 
 	interfaceUnderTest.send_enable_disable_object(1234, VirtualTerminalClient::EnableDisableObjectCommand::DisableObject);
 	serverVT.read_frame(testFrame);
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);
@@ -966,7 +961,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 
 	interfaceUnderTest.send_enable_disable_object(1234, VirtualTerminalClient::EnableDisableObjectCommand::EnableObject);
 	serverVT.read_frame(testFrame);
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);
@@ -979,7 +973,6 @@ TEST(VIRTUAL_TERMINAL_TESTS, MessageConstruction)
 	const std::string testString = "a";
 	interfaceUnderTest.send_draw_text(123, true, 1, testString.data());
 	serverVT.read_frame(testFrame);
-	EXPECT_EQ(0, testFrame.channel);
 	EXPECT_EQ(CAN_DATA_LENGTH, testFrame.dataLength);
 	EXPECT_TRUE(testFrame.isExtendedFrame);
 	EXPECT_EQ(0x1CE72637, testFrame.identifier);

@@ -19,17 +19,17 @@ namespace isobus
 	std::vector<std::shared_ptr<InternalControlFunction>> InternalControlFunction::internalControlFunctionList;
 	bool InternalControlFunction::anyChangedAddress = false;
 
-	InternalControlFunction::InternalControlFunction(NAME desiredName, std::uint8_t preferredAddress, std::uint8_t CANPort) :
-	  ControlFunction(desiredName, NULL_CAN_ADDRESS, CANPort, Type::Internal),
-	  stateMachine(preferredAddress, desiredName, CANPort),
+	InternalControlFunction::InternalControlFunction(NAME desiredName, std::uint8_t preferredAddress, std::shared_ptr<CANNetworkManager> network) :
+	  ControlFunction(desiredName, NULL_CAN_ADDRESS, network, Type::Internal),
+	  stateMachine(preferredAddress, desiredName, network),
 	  objectChangedAddressSinceLastUpdate(false)
 	{
 	}
 
-	std::shared_ptr<InternalControlFunction> InternalControlFunction::create(NAME desiredName, std::uint8_t preferredAddress, std::uint8_t CANPort)
+	std::shared_ptr<InternalControlFunction> InternalControlFunction::create(NAME desiredName, std::uint8_t preferredAddress, std::shared_ptr<CANNetworkManager> network)
 	{
 		// Unfortunately, we can't use `std::make_shared` here because the constructor is private
-		auto createdControlFunction = std::shared_ptr<InternalControlFunction>(new InternalControlFunction(desiredName, preferredAddress, CANPort));
+		auto createdControlFunction = std::shared_ptr<InternalControlFunction>(new InternalControlFunction(desiredName, preferredAddress, network));
 		internalControlFunctionList.push_back(createdControlFunction);
 		return createdControlFunction;
 	}

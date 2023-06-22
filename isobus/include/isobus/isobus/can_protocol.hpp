@@ -26,20 +26,23 @@ namespace isobus
 	/// @class CANLibProtocol
 	///
 	/// @brief A base class for a CAN protocol
-	/// @details CANLibProtocols are objects that manage different statful CAN protocols defined by
-	/// ISO11783 and/or J1939. They could also be used for abitrary processing inside the CAN stack.
+	/// @details CANLibProtocols are objects that manage different stateful CAN protocols defined by
+	/// ISO11783 and/or J1939. They could also be used for arbitrary processing inside the CAN stack.
 	//================================================================================================
 	class CANLibProtocol
 	{
 	public:
-		/// @brief The base class constructor for a CANLibProtocol
+		/// @brief Constructor for the network manager
 		CANLibProtocol();
 
-		/// @brief Deleted copy constructor for a CANLibProtocol
-		CANLibProtocol(CANLibProtocol &) = delete;
-
-		/// @brief The base class destructor for a CANLibProtocol
+		/// @brief Destructor for the network manager
 		virtual ~CANLibProtocol();
+
+		/// @brief Deleted copy and move constructors
+		CANLibProtocol(const CANNetworkManager &) = delete;
+		CANLibProtocol &operator=(const CANNetworkManager &) = delete;
+		CANLibProtocol(CANNetworkManager &&) = delete;
+		CANLibProtocol &operator=(CANNetworkManager &&) = delete;
 
 		/// @brief Returns whether or not the protocol has been initialized by the network manager
 		/// @returns true if the protocol has been initialized by the network manager
@@ -58,7 +61,7 @@ namespace isobus
 		/// @brief A generic way to initialize a protocol
 		/// @details The network manager will call a protocol's initialize function
 		/// when it is first updated, if it has yet to be initialized.
-		virtual void initialize(CANLibBadge<CANNetworkManager>);
+		virtual void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>);
 
 		/// @brief A generic way for a protocol to process a received message
 		/// @param[in] message A received CAN message

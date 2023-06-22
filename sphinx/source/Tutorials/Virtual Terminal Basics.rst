@@ -57,7 +57,7 @@ Create the file `main.cpp` as shown below inside that folder with the requisite 
 
 	void update_CAN_network(void *)
 	{
-		isobus::CANNetworkManager::CANNetwork.update();
+		isobus::network->update();
 	}
 
 	void raw_can_glue(isobus::CANMessageFrame &rawFrame, void *parentPointer)
@@ -86,7 +86,7 @@ Create the file `main.cpp` as shown below inside that folder with the requisite 
 			std::cout << "If you want to use a different driver, please add it to the list above." << std::endl;
 			return -1;
 		}
-		isobus::CANHardwareInterface::set_number_of_can_channels(1);
+		isobus::auto network = std::make_shared<CANNetworkManager>();
 		isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
 		if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -116,8 +116,8 @@ Create the file `main.cpp` as shown below inside that folder with the requisite 
 
 		const isobus::NAMEFilter filterVirtualTerminal(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 		const std::vector<isobus::NAMEFilter> vtNameFilters = { filterVirtualTerminal };
-		auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
-		auto TestPartnerVT = isobus::PartneredControlFunction::create(0, vtNameFilters);
+		auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
+		auto TestPartnerVT = isobus::PartneredControlFunction::create(network, vtNameFilters);
 
 		while (running)
 		{
@@ -402,7 +402,7 @@ Here's the final code for this example:
 
 	void update_CAN_network(void *)
 	{
-		isobus::CANNetworkManager::CANNetwork.update();
+		isobus::network->update();
 	}
 
 	void raw_can_glue(isobus::CANMessageFrame &rawFrame, void *parentPointer)
@@ -478,7 +478,7 @@ Here's the final code for this example:
 			return -1;
 		}
 
-		isobus::CANHardwareInterface::set_number_of_can_channels(1);
+		isobus::auto network = std::make_shared<CANNetworkManager>();
 		isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
 		if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -520,8 +520,8 @@ Here's the final code for this example:
 
 		const isobus::NAMEFilter filterVirtualTerminal(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::VirtualTerminal));
 		const std::vector<isobus::NAMEFilter> vtNameFilters = { filterVirtualTerminal };
-		auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
-		auto TestPartnerVT = isobus::PartneredControlFunction::create(0, vtNameFilters);
+		auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
+		auto TestPartnerVT = isobus::PartneredControlFunction::create(network, vtNameFilters);
 
 		TestVirtualTerminalClient = std::make_shared<isobus::VirtualTerminalClient>(TestPartnerVT, TestInternalECU);
 		TestVirtualTerminalClient->set_object_pool(0, isobus::VirtualTerminalClient::VTVersion::Version3, testPool.data(), testPool.size(), objectPoolHash);

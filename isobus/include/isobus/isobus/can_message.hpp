@@ -48,8 +48,7 @@ namespace isobus
 		static const std::uint32_t ABSOLUTE_MAX_MESSAGE_LENGTH = 117440505;
 
 		/// @brief Constructor for a CAN message
-		/// @param[in] CANPort The can channel index the message uses
-		explicit CANMessage(std::uint8_t CANPort);
+		CANMessage() = default;
 
 		/// @brief Destructor for a CAN message
 		virtual ~CANMessage() = default;
@@ -77,10 +76,6 @@ namespace isobus
 		/// @brief Returns the identifier of the message
 		/// @returns The identifier of the message
 		CANIdentifier get_identifier() const;
-
-		/// @brief Returns the CAN channel index associated with the message
-		/// @returns The CAN channel index associated with the message
-		std::uint8_t get_can_port_index() const;
 
 		/// @brief Sets the message data to the value supplied. Creates a copy.
 		/// @param[in] dataBuffer The data payload
@@ -161,7 +156,6 @@ namespace isobus
 		std::vector<std::uint8_t> data; ///< A data buffer for the message, used when not using data chunk callbacks
 		std::shared_ptr<ControlFunction> source = nullptr; ///< The source control function of the message
 		std::shared_ptr<ControlFunction> destination = nullptr; ///< The destination control function of the message
-		const std::uint8_t CANPortIndex; ///< The CAN channel index associated with the message
 	};
 
 } // namespace isobus

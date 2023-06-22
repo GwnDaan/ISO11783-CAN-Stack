@@ -13,15 +13,17 @@ using namespace isobus;
 class TestGuidanceInterface : public AgriculturalGuidanceInterface
 {
 public:
-	TestGuidanceInterface(std::shared_ptr<InternalControlFunction> source, std::shared_ptr<ControlFunction> destination) :
-	  AgriculturalGuidanceInterface(source, destination){
+	TestGuidanceInterface(std::shared_ptr<CANNetworkManager> network,
+	                      std::shared_ptr<InternalControlFunction> source,
+	                      std::shared_ptr<ControlFunction> destination) :
+	  AgriculturalGuidanceInterface(network, source, destination){};
 
-	  };
-
-	TestGuidanceInterface(std::shared_ptr<InternalControlFunction> source, std::shared_ptr<ControlFunction> destination, bool sendSystemCommandPeriodically, bool sendMachineInfoPeriodically) :
-	  AgriculturalGuidanceInterface(source, destination, sendSystemCommandPeriodically, sendMachineInfoPeriodically){
-
-	  };
+	TestGuidanceInterface(std::shared_ptr<CANNetworkManager> network,
+	                      std::shared_ptr<InternalControlFunction> source,
+	                      std::shared_ptr<ControlFunction> destination,
+	                      bool sendSystemCommandPeriodically,
+	                      bool sendMachineInfoPeriodically) :
+	  AgriculturalGuidanceInterface(network, source, destination, sendSystemCommandPeriodically, sendMachineInfoPeriodically){};
 
 	void test_wrapper_set_flag(std::uint32_t flag)
 	{
@@ -60,8 +62,8 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 	VirtualCANPlugin testPlugin;
 	testPlugin.open();
 
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, std::make_shared<VirtualCANPlugin>());
+	auto network = std::make_shared<CANNetworkManager>();
+	CANHardwareInterface::assign_can_channel_frame_handler(network, std::make_shared<VirtualCANPlugin>());
 	CANHardwareInterface::start();
 
 	isobus::NAME TestDeviceNAME(0);
@@ -75,12 +77,11 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto testECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x44, 0);
+	auto testECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x44, network);
 
 	CANMessageFrame testFrame;
 	testFrame.timestamp_us = 0;
 	testFrame.identifier = 0;
-	testFrame.channel = 0;
 	std::memset(testFrame.data, 0, sizeof(testFrame.data));
 	testFrame.dataLength = 0; ///< The length of the data used in the frame
 	testFrame.isExtendedFrame = true; ///< Denotes if the frame is extended format
@@ -103,7 +104,7 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 	ASSERT_TRUE(testPlugin.get_queue_empty());
 
 	{
-		TestGuidanceInterface interfaceUnderTest(testECU, nullptr); // Configured for broadcasts, but no message is configured periodically
+		TestGuidanceInterface interfaceUnderTest(network, testECU, nullptr); // Configured for broadcasts, but no message is configured periodically
 		ASSERT_FALSE(interfaceUnderTest.test_wrapper_send_guidance_machine_info());
 		ASSERT_FALSE(interfaceUnderTest.test_wrapper_send_guidance_system_command());
 
@@ -127,7 +128,7 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 	}
 
 	{
-		TestGuidanceInterface interfaceUnderTest(testECU, nullptr, false, true); // Configured for broadcasts, and only guidance machine info is sent periodically
+		TestGuidanceInterface interfaceUnderTest(network, testECU, nullptr, false, true); // Configured for broadcasts, and only guidance machine info is sent periodically
 
 		interfaceUnderTest.guidanceMachineInfoTransmitData.set_estimated_curvature(10.0f);
 		EXPECT_NEAR(10.0f, interfaceUnderTest.guidanceMachineInfoTransmitData.get_estimated_curvature(), 0.01f);
@@ -158,7 +159,6 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 		ASSERT_TRUE(testPlugin.read_frame(testFrame));
 
 		// Validate message encoding
-		EXPECT_EQ(0, testFrame.channel);
 		EXPECT_EQ(8, testFrame.dataLength);
 		EXPECT_EQ(0x0CACFF44, testFrame.identifier);
 
@@ -179,7 +179,7 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 	}
 
 	{
-		TestGuidanceInterface interfaceUnderTest(testECU, nullptr, true, false);
+		TestGuidanceInterface interfaceUnderTest(network, testECU, nullptr, true, false);
 		// Test the command message next. It's much simpler.
 		interfaceUnderTest.guidanceSystemCommandTransmitData.set_curvature(-43.4f);
 		interfaceUnderTest.guidanceSystemCommandTransmitData.set_status(AgriculturalGuidanceInterface::GuidanceSystemCommand::CurvatureCommandStatus::IntendedToSteer);
@@ -197,7 +197,7 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 		EXPECT_EQ(1, (testFrame.data[2] & 0x03));
 	}
 	{
-		TestGuidanceInterface interfaceUnderTest(testECU, nullptr, true, true); // Configured for broadcasts, and both guidance system command and guidance machine info are sent periodically
+		TestGuidanceInterface interfaceUnderTest(network, testECU, nullptr, true, true); // Configured for broadcasts, and both guidance system command and guidance machine info are sent periodically
 		ASSERT_TRUE(interfaceUnderTest.test_wrapper_send_guidance_machine_info());
 		ASSERT_TRUE(testPlugin.read_frame(testFrame));
 		ASSERT_TRUE(interfaceUnderTest.test_wrapper_send_guidance_system_command());
@@ -223,12 +223,12 @@ TEST(GUIDANCE_TESTS, GuidanceMessages)
 
 TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 {
-	TestGuidanceInterface interfaceUnderTest(nullptr, nullptr);
+	auto network = std::make_shared<CANNetworkManager>();
+	TestGuidanceInterface interfaceUnderTest(network, nullptr, nullptr);
 	CANMessageFrame testFrame;
 
 	testFrame.timestamp_us = 0;
 	testFrame.identifier = 0;
-	testFrame.channel = 0;
 	std::memset(testFrame.data, 0, sizeof(testFrame.data));
 	testFrame.dataLength = 0;
 	testFrame.isExtendedFrame = true;
@@ -238,7 +238,7 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	EXPECT_EQ(nullptr, interfaceUnderTest.guidanceMachineInfoTransmitData.get_sender_control_function());
 	EXPECT_EQ(nullptr, interfaceUnderTest.guidanceSystemCommandTransmitData.get_sender_control_function());
 
-	CANNetworkManager::CANNetwork.update();
+	network->update();
 
 	EXPECT_EQ(false, interfaceUnderTest.get_initialized());
 	interfaceUnderTest.initialize();
@@ -251,7 +251,6 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 
 	// Force claim some other ECU
 	testFrame.dataLength = 8;
-	testFrame.channel = 0;
 	testFrame.isExtendedFrame = true;
 	testFrame.identifier = 0x18EEFF46;
 	testFrame.data[0] = 0x03;
@@ -262,8 +261,8 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	testFrame.data[5] = 0x82;
 	testFrame.data[6] = 0x01;
 	testFrame.data[7] = 0xA0;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	// Register callbacks to test
 	auto guidanceCommandListener = interfaceUnderTest.get_guidance_system_command_event_publisher().add_listener(TestGuidanceInterface::test_guidance_system_command_callback);
@@ -283,8 +282,8 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	testFrame.data[5] = 0xFF;
 	testFrame.data[6] = 0xFF;
 	testFrame.data[7] = 0xFF;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	EXPECT_EQ(false, TestGuidanceInterface::wasGuidanceMachineInfoCallbackHit);
 	EXPECT_EQ(true, TestGuidanceInterface::wasGuidanceSystemCommandCallbackHit);
@@ -311,8 +310,8 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	testFrame.data[5] = 0xFF;
 	testFrame.data[6] = 0xFF;
 	testFrame.data[7] = 0xFF;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	EXPECT_EQ(true, TestGuidanceInterface::wasGuidanceMachineInfoCallbackHit);
 	EXPECT_EQ(false, TestGuidanceInterface::wasGuidanceSystemCommandCallbackHit);
@@ -342,8 +341,8 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	testFrame.data[5] = 0xFF;
 	testFrame.data[6] = 0xFF;
 	testFrame.data[7] = 0xFF;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	EXPECT_EQ(1, interfaceUnderTest.get_number_received_guidance_machine_info_message_sources());
 	EXPECT_EQ(1, interfaceUnderTest.get_number_received_guidance_system_command_sources());
@@ -362,8 +361,8 @@ TEST(GUIDANCE_TESTS, ListenOnlyModeAndDecoding)
 	testFrame.data[5] = 0xFF;
 	testFrame.data[6] = 0xFF;
 	testFrame.data[7] = 0xFF;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	EXPECT_EQ(1, interfaceUnderTest.get_number_received_guidance_machine_info_message_sources());
 	EXPECT_EQ(1, interfaceUnderTest.get_number_received_guidance_system_command_sources());

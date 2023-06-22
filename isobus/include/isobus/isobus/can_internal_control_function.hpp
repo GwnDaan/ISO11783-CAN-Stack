@@ -36,8 +36,8 @@ namespace isobus
 		/// @brief The factory function to construct an internal control function
 		/// @param[in] desiredName The NAME for this control function to claim as
 		/// @param[in] preferredAddress The preferred NAME for this control function
-		/// @param[in] CANPort The CAN channel index for this control function to use
-		static std::shared_ptr<InternalControlFunction> create(NAME desiredName, std::uint8_t preferredAddress, std::uint8_t CANPort);
+		/// @param[in] network A pointer to the network manager that owns this control function
+		static std::shared_ptr<InternalControlFunction> create(NAME desiredName, std::uint8_t preferredAddress, std::shared_ptr<CANNetworkManager> network);
 
 		/// @brief Destroys this internal control function, by removing it from the network manager
 		/// @param[in] expectedRefCount The expected number of shared pointers to this control function after removal
@@ -73,8 +73,8 @@ namespace isobus
 		/// @brief The protected constructor for the internal control function, which is called by the (inherited) factory function
 		/// @param[in] desiredName The NAME for this control function to claim as
 		/// @param[in] preferredAddress The preferred NAME for this control function
-		/// @param[in] CANPort The CAN channel index for this control function to use
-		InternalControlFunction(NAME desiredName, std::uint8_t preferredAddress, std::uint8_t CANPort);
+		/// @param[in] network A pointer to the network manager that owns this control function
+		InternalControlFunction(NAME desiredName, std::uint8_t preferredAddress, std::shared_ptr<CANNetworkManager> network);
 
 	private:
 		/// @brief Updates the internal control function, should be called periodically by the network manager

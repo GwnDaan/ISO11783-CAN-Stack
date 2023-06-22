@@ -36,11 +36,13 @@ namespace isobus
 	{
 	public:
 		/// @brief Constructor for a AgriculturalGuidanceInterface
+		/// @param[in] network The network manager to use for subscribing to received messages
 		/// @param[in] source The internal control function to use when sending messages, or nullptr for listen only
 		/// @param[in] destination The destination control function for transmitted messages, or nullptr for broadcasts
 		/// @param[in] sentSystemCommandPeriodically If true, the system command message will be sent periodically. This should (only) be used by an guidance application trying to steer a machine.
 		/// @param[in] sentMachineInfoPeriodically If true, the machine info message will be sent periodically. This should (only) be used by the steering controller itself.
-		AgriculturalGuidanceInterface(std::shared_ptr<InternalControlFunction> source,
+		AgriculturalGuidanceInterface(std::shared_ptr<CANNetworkManager> network,
+		                              std::shared_ptr<InternalControlFunction> source,
 		                              std::shared_ptr<ControlFunction> destination,
 		                              bool enableSendingSystemCommandPeriodically = false,
 		                              bool enableSendingMachineInfoPeriodically = false);
@@ -394,6 +396,7 @@ namespace isobus
 		EventDispatcher<const std::shared_ptr<GuidanceMachineInfo>, bool> guidanceMachineInfoEventPublisher; ///< An event publisher for notifying when new guidance machine info messages are received
 		EventDispatcher<const std::shared_ptr<GuidanceSystemCommand>, bool> guidanceSystemCommandEventPublisher; ///< An event publisher for notifying when new guidance system commands are received
 		std::shared_ptr<ControlFunction> destinationControlFunction; ///< The optional destination to which messages will be sent. If nullptr it will be broadcast instead.
+		std::weak_ptr<CANNetworkManager> associatedNetwork; ///< The network manager to which this interface instance is attached
 		std::vector<std::shared_ptr<GuidanceMachineInfo>> receivedGuidanceMachineInfoMessages; ///< A list of all received estimated curvatures
 		std::vector<std::shared_ptr<GuidanceSystemCommand>> receivedGuidanceSystemCommandMessages; ///< A list of all received curvature commands and statuses
 		std::uint32_t guidanceSystemCommandTransmitTimestamp_ms = 0; ///< Timestamp used to know when to transmit the guidance system command message

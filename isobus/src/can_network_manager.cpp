@@ -26,27 +26,25 @@
 
 namespace isobus
 {
-	CANNetworkManager CANNetworkManager::CANNetwork;
-
 	void CANNetworkManager::initialize()
 	{
-		receiveMessageList.clear();
-		initialized = true;
-		transportProtocol.initialize({});
-		extendedTransportProtocol.initialize({});
-	}
-
-	std::shared_ptr<ControlFunction> CANNetworkManager::get_control_function(std::uint8_t channelIndex, std::uint8_t address, CANLibBadge<AddressClaimStateMachine>) const
-	{
-		return get_control_function(channelIndex, address);
-	}
-
-	void CANNetworkManager::add_control_function(std::uint8_t channelIndex, std::shared_ptr<ControlFunction> newControlFunction, std::uint8_t address, CANLibBadge<AddressClaimStateMachine>)
-	{
-		if ((nullptr != newControlFunction) && (address < NULL_CAN_ADDRESS) && (channelIndex < CAN_PORT_MAXIMUM))
+		if (!initialized)
 		{
-			controlFunctionTable[channelIndex][address] = newControlFunction;
+			receiveMessageList.clear();
+			transportProtocol.initialize(shared_from_this(), {});
+			fastPacketProtocol.initialize(shared_from_this(), {});
+			extendedTransportProtocol.initialize(shared_from_this(), {});
+			initialized = true;
 		}
+		else
+		{
+			CANStackLogger::warn("[Network] Network already initialized");
+		}
+	}
+
+	std::shared_ptr<ControlFunction> CANNetworkManager::get_control_function(std::uint8_t address, CANLibBadge<AddressClaimStateMachine>) const
+	{
+		return get_control_function(address);
 	}
 
 	void CANNetworkManager::add_global_parameter_group_number_callback(std::uint32_t parameterGroupNumber, CANLibCallback callback, void *parent)
@@ -62,11 +60,6 @@ namespace isobus
 		{
 			globalParameterGroupNumberCallbacks.erase(callbackLocation);
 		}
-	}
-
-	std::size_t CANNetworkManager::get_number_global_parameter_group_number_callbacks() const
-	{
-		return globalParameterGroupNumberCallbacks.size();
 	}
 
 	void CANNetworkManager::add_any_control_function_parameter_group_number_callback(std::uint32_t parameterGroupNumber, CANLibCallback callback, void *parent)
@@ -86,30 +79,14 @@ namespace isobus
 		}
 	}
 
-	std::shared_ptr<InternalControlFunction> CANNetworkManager::get_internal_control_function(std::shared_ptr<ControlFunction> controlFunction)
-	{
-		std::shared_ptr<InternalControlFunction> retVal = nullptr;
-
-		if ((nullptr != controlFunction) &&
-		    (ControlFunction::Type::Internal == controlFunction->get_type()))
-		{
-			retVal = std::static_pointer_cast<InternalControlFunction>(controlFunction);
-		}
-		return retVal;
-	}
-
-	float CANNetworkManager::get_estimated_busload(std::uint8_t canChannel)
+	float CANNetworkManager::get_estimated_busload()
 	{
 		const std::lock_guard<std::mutex> lock(busloadUpdateMutex);
 		constexpr float ISOBUS_BAUD_RATE_BPS = 250000.0f;
-		float retVal = 0.0f;
 
-		if (canChannel < CAN_PORT_MAXIMUM)
-		{
-			float totalTimeInAccumulatorWindow = (busloadMessageBitsHistory.at(canChannel).size() * BUSLOAD_UPDATE_FREQUENCY_MS) / 1000.0f;
-			std::uint32_t totalBitCount = std::accumulate(busloadMessageBitsHistory.at(canChannel).begin(), busloadMessageBitsHistory.at(canChannel).end(), 0);
-			retVal = (0 != totalTimeInAccumulatorWindow) ? ((totalBitCount / (totalTimeInAccumulatorWindow * ISOBUS_BAUD_RATE_BPS)) * 100.0f) : 0.0f;
-		}
+		float totalTimeInAccumulatorWindow = (busloadMessageBitsHistory.size() * BUSLOAD_UPDATE_FREQUENCY_MS) / 1000.0f;
+		std::uint32_t totalBitCount = std::accumulate(busloadMessageBitsHistory.begin(), busloadMessageBitsHistory.end(), 0);
+		float retVal = (0 != totalTimeInAccumulatorWindow) ? ((totalBitCount / (totalTimeInAccumulatorWindow * ISOBUS_BAUD_RATE_BPS)) * 100.0f) : 0.0f;
 		return retVal;
 	}
 
@@ -160,21 +137,24 @@ namespace isobus
 			if ((!retVal) &&
 			    (nullptr != dataBuffer))
 			{
-				if (nullptr == destinationControlFunction)
+				if (auto network = sourceControlFunction->get_associated_network().lock())
 				{
-					// Todo move binding of dest address to hardware layer
-					retVal = send_can_message_raw(sourceControlFunction->get_can_port(), sourceControlFunction->get_address(), 0xFF, parameterGroupNumber, priority, dataBuffer, dataLength);
-				}
-				else if (destinationControlFunction->get_address_valid())
-				{
-					retVal = send_can_message_raw(sourceControlFunction->get_can_port(), sourceControlFunction->get_address(), destinationControlFunction->get_address(), parameterGroupNumber, priority, dataBuffer, dataLength);
-				}
+					if (nullptr == destinationControlFunction)
+					{
+						//! @todo move binding of dest address to hardware layer
+						retVal = network->send_can_message_raw(sourceControlFunction->get_address(), 0xFF, parameterGroupNumber, priority, dataBuffer, dataLength);
+					}
+					else if (destinationControlFunction->get_address_valid())
+					{
+						retVal = network->send_can_message_raw(sourceControlFunction->get_address(), destinationControlFunction->get_address(), parameterGroupNumber, priority, dataBuffer, dataLength);
+					}
 
-				if ((retVal) &&
-				    (nullptr != transmitCompleteCallback))
-				{
-					// Message was not sent via a protocol, so handle the tx callback now
-					transmitCompleteCallback(parameterGroupNumber, dataLength, sourceControlFunction, destinationControlFunction, retVal, parentPointer);
+					if ((retVal) &&
+					    (nullptr != transmitCompleteCallback))
+					{
+						// Message was not sent via a protocol, so handle the tx callback now
+						transmitCompleteCallback(parameterGroupNumber, dataLength, sourceControlFunction, destinationControlFunction, retVal, parentPointer);
+					}
 				}
 			}
 		}
@@ -222,7 +202,7 @@ namespace isobus
 					}
 					if (currentInternalControlFunction->get_changed_address_since_last_update({}))
 					{
-						update_address_table(currentInternalControlFunction->get_can_port(), currentInternalControlFunction->get_address());
+						update_address_table(currentInternalControlFunction->get_address());
 					}
 				}
 			}
@@ -236,7 +216,7 @@ namespace isobus
 			{
 				if (!currentProtocol->get_is_initialized())
 				{
-					currentProtocol->initialize({});
+					currentProtocol->initialize(shared_from_this(), {});
 				}
 				currentProtocol->update({});
 			}
@@ -245,8 +225,7 @@ namespace isobus
 		updateTimestamp_ms = SystemTiming::get_timestamp_ms();
 	}
 
-	bool CANNetworkManager::send_can_message_raw(std::uint32_t portIndex,
-	                                             std::uint8_t sourceAddress,
+	bool CANNetworkManager::send_can_message_raw(std::uint8_t sourceAddress,
 	                                             std::uint8_t destAddress,
 	                                             std::uint32_t parameterGroupNumber,
 	                                             std::uint8_t priority,
@@ -254,55 +233,60 @@ namespace isobus
 	                                             std::uint32_t size,
 	                                             CANLibBadge<AddressClaimStateMachine>) const
 	{
-		return send_can_message_raw(portIndex, sourceAddress, destAddress, parameterGroupNumber, priority, data, size);
+		return send_can_message_raw(sourceAddress, destAddress, parameterGroupNumber, priority, data, size);
 	}
 
 	ParameterGroupNumberCallbackData CANNetworkManager::get_global_parameter_group_number_callback(std::uint32_t index) const
 	{
 		ParameterGroupNumberCallbackData retVal(0, nullptr, nullptr, nullptr);
 
-		if (index < get_number_global_parameter_group_number_callbacks())
+		if (index < globalParameterGroupNumberCallbacks.size())
 		{
 			retVal = globalParameterGroupNumberCallbacks[index];
 		}
 		return retVal;
 	}
 
-	void receive_can_message_frame_from_hardware(const CANMessageFrame &rxFrame)
+	void receive_can_message_frame_from_hardware(const std::weak_ptr<CANNetworkManager> associatedNetwork, const CANMessageFrame &rxFrame)
 	{
-		CANNetworkManager::process_receive_can_message_frame(rxFrame);
+		if (auto network = associatedNetwork.lock())
+		{
+			std::const_pointer_cast<CANNetworkManager>(network)->process_receive_can_message_frame(rxFrame);
+		}
 	}
 
-	void on_transmit_can_message_frame_from_hardware(const CANMessageFrame &txFrame)
+	void on_transmit_can_message_frame_from_hardware(const std::weak_ptr<CANNetworkManager> associatedNetwork, const CANMessageFrame &txFrame)
 	{
-		CANNetworkManager::process_transmitted_can_message_frame(txFrame);
+		if (auto network = associatedNetwork.lock())
+		{
+			std::const_pointer_cast<CANNetworkManager>(network)->process_transmitted_can_message_frame(txFrame);
+		}
 	}
 
-	void periodic_update_from_hardware()
+	void periodic_update_from_hardware(std::shared_ptr<const CANNetworkManager> network)
 	{
-		CANNetworkManager::CANNetwork.update();
+		std::const_pointer_cast<CANNetworkManager>(network)->update();
 	}
 
 	void CANNetworkManager::process_receive_can_message_frame(const CANMessageFrame &rxFrame)
 	{
-		CANMessage tempCANMessage(rxFrame.channel);
-
-		CANNetworkManager::CANNetwork.update_control_functions(rxFrame);
+		CANMessage tempCANMessage;
+		update_control_functions(rxFrame);
 
 		tempCANMessage.set_identifier(CANIdentifier(rxFrame.identifier));
 
-		tempCANMessage.set_source_control_function(CANNetworkManager::CANNetwork.get_control_function(rxFrame.channel, tempCANMessage.get_identifier().get_source_address()));
-		tempCANMessage.set_destination_control_function(CANNetworkManager::CANNetwork.get_control_function(rxFrame.channel, tempCANMessage.get_identifier().get_destination_address()));
+		tempCANMessage.set_source_control_function(get_control_function(tempCANMessage.get_identifier().get_source_address()));
+		tempCANMessage.set_destination_control_function(get_control_function(tempCANMessage.get_identifier().get_destination_address()));
 		tempCANMessage.set_data(rxFrame.data, rxFrame.dataLength);
 
-		CANNetworkManager::CANNetwork.update_busload(rxFrame.channel, rxFrame.get_number_bits_in_message());
+		update_busload(rxFrame.get_number_bits_in_message());
 
-		CANNetworkManager::CANNetwork.receive_can_message(tempCANMessage);
+		receive_can_message(tempCANMessage);
 	}
 
 	void CANNetworkManager::process_transmitted_can_message_frame(const CANMessageFrame &txFrame)
 	{
-		CANNetworkManager::CANNetwork.update_busload(txFrame.channel, txFrame.get_number_bits_in_message());
+		update_busload(txFrame.get_number_bits_in_message());
 	}
 
 	void CANNetworkManager::on_control_function_destroyed(std::shared_ptr<ControlFunction> controlFunction, CANLibBadge<ControlFunction>)
@@ -315,7 +299,7 @@ namespace isobus
 
 		for (std::uint8_t i = 0; i < NULL_CAN_ADDRESS; i++)
 		{
-			if (controlFunctionTable[controlFunction->get_can_port()][i] == controlFunction)
+			if (controlFunctionTable[i] == controlFunction)
 			{
 				if (i != controlFunction->get_address())
 				{
@@ -325,19 +309,19 @@ namespace isobus
 				if (initialized)
 				{
 					// The control function was active, replace it with an new external control function
-					controlFunctionTable[controlFunction->get_can_port()][controlFunction->address] = ControlFunction::create(controlFunction->get_NAME(), controlFunction->get_address(), controlFunction->get_can_port());
+					controlFunctionTable[controlFunction->address] = ControlFunction::create(controlFunction->get_NAME(), controlFunction->get_address(), shared_from_this());
 				}
 				else
 				{
 					// The network manager is not initialized yet, just remove the control function from the table
-					controlFunctionTable[controlFunction->get_can_port()][i] = nullptr;
+					controlFunctionTable[i] = nullptr;
 				}
 			}
 		}
 		CANStackLogger::debug("[NM]: %s control function with address '%d' is deleted.", controlFunction->get_type_string().c_str(), controlFunction->get_address());
 	}
 
-	void CANNetworkManager::on_control_function_created(std::shared_ptr<ControlFunction> controlFunction, CANLibBadge<ControlFunction>)
+	void CANNetworkManager::on_control_function_created(std::shared_ptr<ControlFunction>, CANLibBadge<ControlFunction>)
 	{
 		//! @todo implement this when we stop using the dedicated internal/partner control functions lists in their respective classes
 	}
@@ -383,89 +367,74 @@ namespace isobus
 		return retVal;
 	}
 
-	CANNetworkManager::CANNetworkManager()
-	{
-		currentBusloadBitAccumulator.fill(0);
-		controlFunctionTable.fill({ nullptr });
-	}
-
 	void CANNetworkManager::update_address_table(const CANMessage &message)
 	{
-		std::uint8_t CANPort = message.get_can_port_index();
-
-		if ((static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim) == message.get_identifier().get_parameter_group_number()) &&
-		    (CANPort < CAN_PORT_MAXIMUM))
+		if (static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim) == message.get_identifier().get_parameter_group_number())
 		{
 			std::uint8_t messageSourceAddress = message.get_identifier().get_source_address();
 
-			update_address_table(CANPort, messageSourceAddress);
+			update_address_table(messageSourceAddress);
 		}
 	}
 
-	void CANNetworkManager::update_address_table(std::uint8_t channelIndex, std::uint8_t claimedAddress)
+	void CANNetworkManager::update_address_table(std::uint8_t claimedAddress)
 	{
-		if (channelIndex < CAN_PORT_MAXIMUM)
+		if ((nullptr != controlFunctionTable[claimedAddress]) &&
+		    (CANIdentifier::NULL_ADDRESS == controlFunctionTable[claimedAddress]->get_address()))
 		{
-			if ((nullptr != controlFunctionTable[channelIndex][claimedAddress]) &&
-			    (CANIdentifier::NULL_ADDRESS == controlFunctionTable[channelIndex][claimedAddress]->get_address()))
+			// Someone is at that spot in the table, but their address was stolen
+			// Need to evict them from the table and move them to the inactive list
+			controlFunctionTable[claimedAddress]->address = NULL_CAN_ADDRESS;
+			inactiveControlFunctions.push_back(controlFunctionTable[claimedAddress]);
+			controlFunctionTable[claimedAddress] = nullptr;
+			CANStackLogger::debug("[NM]: %s CF '%d' was evicted from address '%d' in the lookup table.",
+			                      controlFunctionTable[claimedAddress]->get_type_string().c_str(),
+			                      controlFunctionTable[claimedAddress]->get_NAME().get_full_name(),
+			                      claimedAddress);
+		}
+
+		// Now, check for either a free spot in the table or recent eviction and populate if needed
+		if (nullptr == controlFunctionTable[claimedAddress])
+		{
+			// Look through all active CFs, maybe one of them has switched addresses
+			for (std::uint8_t i = 0; i < NULL_CAN_ADDRESS; i++)
 			{
-				// Someone is at that spot in the table, but their address was stolen
-				// Need to evict them from the table and move them to the inactive list
-				controlFunctionTable[channelIndex][claimedAddress]->address = NULL_CAN_ADDRESS;
-				inactiveControlFunctions.push_back(controlFunctionTable[channelIndex][claimedAddress]);
-				controlFunctionTable[channelIndex][claimedAddress] = nullptr;
-				CANStackLogger::debug("[NM]: %s CF '%d' was evicted from address '%d' on channel '%d' in the lookup table.",
-				                      controlFunctionTable[channelIndex][claimedAddress]->get_type_string().c_str(),
-				                      controlFunctionTable[channelIndex][claimedAddress]->get_NAME().get_full_name(),
-				                      claimedAddress,
-				                      channelIndex);
+				if ((nullptr != controlFunctionTable[i]) &&
+				    (i != claimedAddress) &&
+				    (controlFunctionTable[i]->get_address() == claimedAddress))
+				{
+					controlFunctionTable[claimedAddress] = controlFunctionTable[i];
+					controlFunctionTable[i] = nullptr;
+					CANStackLogger::debug("[NM]: %s CF '%d' moved from address '%d' to address '%d' in the lookup table.",
+					                      controlFunctionTable[claimedAddress]->get_type_string().c_str(),
+					                      controlFunctionTable[claimedAddress]->get_NAME().get_full_name(),
+					                      i,
+					                      claimedAddress);
+					break;
+				}
 			}
 
-			// Now, check for either a free spot in the table or recent eviction and populate if needed
-			if (nullptr == controlFunctionTable[channelIndex][claimedAddress])
+			// Look through all inactive CFs, maybe one of them has freshly claimed an address
+			for (auto currentControlFunction : inactiveControlFunctions)
 			{
-				// Look through all active CFs, maybe one of them has switched addresses
-				for (std::uint8_t i = 0; i < NULL_CAN_ADDRESS; i++)
+				if (currentControlFunction->get_address() == claimedAddress)
 				{
-					if ((nullptr != controlFunctionTable[channelIndex][i]) &&
-					    (i != claimedAddress) &&
-					    (controlFunctionTable[channelIndex][i]->get_address() == claimedAddress))
-					{
-						controlFunctionTable[channelIndex][claimedAddress] = controlFunctionTable[channelIndex][i];
-						controlFunctionTable[channelIndex][i] = nullptr;
-						CANStackLogger::debug("[NM]: %s CF '%d' moved from address '%d' to address '%d' on channel '%d' in the lookup table.",
-						                      controlFunctionTable[channelIndex][claimedAddress]->get_type_string().c_str(),
-						                      controlFunctionTable[channelIndex][claimedAddress]->get_NAME().get_full_name(),
-						                      i,
-						                      claimedAddress,
-						                      channelIndex);
-						break;
-					}
-				}
-
-				// Look through all inactive CFs, maybe one of them has freshly claimed an address
-				for (auto currentControlFunction : inactiveControlFunctions)
-				{
-					if (currentControlFunction->get_address() == claimedAddress)
-					{
-						controlFunctionTable[channelIndex][claimedAddress] = currentControlFunction;
-						CANStackLogger::debug("[NM]: %s CF '%d' moved from inactive to address '%d' on channel '%d' in the lookup table.",
-						                      currentControlFunction->get_type_string().c_str(),
-						                      currentControlFunction->get_NAME().get_full_name(),
-						                      claimedAddress,
-						                      channelIndex);
-						break;
-					}
+					controlFunctionTable[claimedAddress] = currentControlFunction;
+					CANStackLogger::debug("[NM]: %s CF '%d' moved from inactive to address '%d' in the lookup table.",
+					                      currentControlFunction->get_type_string().c_str(),
+					                      currentControlFunction->get_NAME().get_full_name(),
+					                      claimedAddress);
+					break;
 				}
 			}
 		}
 	}
 
-	void CANNetworkManager::update_busload(std::uint8_t channelIndex, std::uint32_t numberOfBitsProcessed)
+	void CANNetworkManager::update_busload(std::uint32_t numberOfBitsProcessed)
 	{
-		const std::lock_guard<std::mutex> lock(CANNetworkManager::CANNetwork.busloadUpdateMutex);
+		const std::lock_guard<std::mutex> lock(busloadUpdateMutex);
 
-		currentBusloadBitAccumulator.at(channelIndex) += numberOfBitsProcessed;
+		currentBusloadBitAccumulator += numberOfBitsProcessed;
 	}
 
 	void CANNetworkManager::update_busload_history()
@@ -474,16 +443,13 @@ namespace isobus
 
 		if (SystemTiming::time_expired_ms(busloadUpdateTimestamp_ms, BUSLOAD_UPDATE_FREQUENCY_MS))
 		{
-			for (std::size_t i = 0; i < busloadMessageBitsHistory.size(); i++)
-			{
-				busloadMessageBitsHistory.at(i).push_back(currentBusloadBitAccumulator.at(i));
+			busloadMessageBitsHistory.push_back(currentBusloadBitAccumulator);
 
-				while (busloadMessageBitsHistory.at(i).size() > (BUSLOAD_SAMPLE_WINDOW_MS / BUSLOAD_UPDATE_FREQUENCY_MS))
-				{
-					busloadMessageBitsHistory.at(i).pop_front();
-				}
-				currentBusloadBitAccumulator.at(i) = 0;
+			while (busloadMessageBitsHistory.size() > (BUSLOAD_SAMPLE_WINDOW_MS / BUSLOAD_UPDATE_FREQUENCY_MS))
+			{
+				busloadMessageBitsHistory.pop_front();
 			}
+			currentBusloadBitAccumulator = 0;
 			busloadUpdateTimestamp_ms = SystemTiming::get_timestamp_ms();
 		}
 	}
@@ -491,8 +457,7 @@ namespace isobus
 	void CANNetworkManager::update_control_functions(const CANMessageFrame &rxFrame)
 	{
 		if ((static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim) == CANIdentifier(rxFrame.identifier).get_parameter_group_number()) &&
-		    (CAN_DATA_LENGTH == rxFrame.dataLength) &&
-		    (rxFrame.channel < CAN_PORT_MAXIMUM))
+		    (CAN_DATA_LENGTH == rxFrame.dataLength))
 		{
 			std::uint64_t claimedNAME;
 			std::shared_ptr<ControlFunction> foundControlFunction = nullptr;
@@ -507,12 +472,12 @@ namespace isobus
 			claimedNAME |= (static_cast<std::uint64_t>(rxFrame.data[7]) << 56);
 
 			// Check if the claimed NAME is someone we already know about
-			auto activeResult = std::find_if(controlFunctionTable[rxFrame.channel].begin(),
-			                                 controlFunctionTable[rxFrame.channel].end(),
+			auto activeResult = std::find_if(controlFunctionTable.begin(),
+			                                 controlFunctionTable.end(),
 			                                 [claimedNAME](const std::shared_ptr<ControlFunction> &cf) {
 				                                 return (nullptr != cf) && (cf->controlFunctionNAME.get_full_name() == claimedNAME);
 			                                 });
-			if (activeResult != controlFunctionTable[rxFrame.channel].end())
+			if (activeResult != controlFunctionTable.end())
 			{
 				foundControlFunction = *activeResult;
 			}
@@ -521,7 +486,7 @@ namespace isobus
 				auto inActiveResult = std::find_if(inactiveControlFunctions.begin(),
 				                                   inactiveControlFunctions.end(),
 				                                   [claimedNAME, &rxFrame](const std::shared_ptr<ControlFunction> &cf) {
-					                                   return (cf->controlFunctionNAME.get_full_name() == claimedNAME) && (cf->get_can_port() == rxFrame.channel);
+					                                   return cf->controlFunctionNAME.get_full_name() == claimedNAME;
 				                                   });
 				if (inActiveResult != inactiveControlFunctions.end())
 				{
@@ -535,21 +500,20 @@ namespace isobus
 				for (std::size_t i = 0; i < PartneredControlFunction::partneredControlFunctionList.size(); i++)
 				{
 					if ((nullptr != PartneredControlFunction::partneredControlFunctionList[i]) &&
-					    (PartneredControlFunction::partneredControlFunctionList[i]->get_can_port() == rxFrame.channel) &&
 					    (PartneredControlFunction::partneredControlFunctionList[i]->check_matches_name(NAME(claimedNAME))))
 					{
 						PartneredControlFunction::partneredControlFunctionList[i]->address = CANIdentifier(rxFrame.identifier).get_source_address();
 						PartneredControlFunction::partneredControlFunctionList[i]->controlFunctionNAME = NAME(claimedNAME);
 						foundControlFunction = std::shared_ptr<ControlFunction>(PartneredControlFunction::partneredControlFunctionList[i]);
-						controlFunctionTable[rxFrame.channel][foundControlFunction->get_address()] = foundControlFunction;
+						controlFunctionTable[foundControlFunction->get_address()] = foundControlFunction;
 						break;
 					}
 				}
 			}
 
 			// Remove any CF that has the same address as the one claiming
-			std::for_each(controlFunctionTable[rxFrame.channel].begin(),
-			              controlFunctionTable[rxFrame.channel].end(),
+			std::for_each(controlFunctionTable.begin(),
+			              controlFunctionTable.end(),
 			              [&rxFrame, &foundControlFunction](const std::shared_ptr<ControlFunction> &cf) {
 				              if ((nullptr != cf) && (foundControlFunction != cf) && (cf->address == CANIdentifier(rxFrame.identifier).get_source_address()))
 					              cf->address = CANIdentifier::NULL_ADDRESS;
@@ -558,15 +522,15 @@ namespace isobus
 			std::for_each(inactiveControlFunctions.begin(),
 			              inactiveControlFunctions.end(),
 			              [&rxFrame, &foundControlFunction](const std::shared_ptr<ControlFunction> &cf) {
-				              if ((foundControlFunction != cf) && (cf->address == CANIdentifier(rxFrame.identifier).get_source_address()) && (cf->get_can_port() == rxFrame.channel))
+				              if ((foundControlFunction != cf) && (cf->address == CANIdentifier(rxFrame.identifier).get_source_address()))
 					              cf->address = CANIdentifier::NULL_ADDRESS;
 			              });
 
 			if (nullptr == foundControlFunction)
 			{
 				// New device, need to start keeping track of it
-				foundControlFunction = ControlFunction::create(NAME(claimedNAME), CANIdentifier(rxFrame.identifier).get_source_address(), rxFrame.channel);
-				controlFunctionTable[rxFrame.channel][foundControlFunction->get_address()] = foundControlFunction;
+				foundControlFunction = ControlFunction::create(NAME(claimedNAME), CANIdentifier(rxFrame.identifier).get_source_address(), shared_from_this());
+				controlFunctionTable[foundControlFunction->get_address()] = foundControlFunction;
 				CANStackLogger::debug("[NM]: New Control function %d", foundControlFunction->get_address());
 			}
 			else
@@ -597,7 +561,7 @@ namespace isobus
 					for (auto currentInactiveControlFunction = inactiveControlFunctions.begin(); currentInactiveControlFunction != inactiveControlFunctions.end(); currentInactiveControlFunction++)
 					{
 						if ((partner->check_matches_name((*currentInactiveControlFunction)->get_NAME())) &&
-						    (partner->get_can_port() == (*currentInactiveControlFunction)->get_can_port()) &&
+						    (partner->get_associated_network().lock() == shared_from_this()) &&
 						    (ControlFunction::Type::External == (*currentInactiveControlFunction)->get_type()))
 						{
 							foundReplaceableControlFunction = true;
@@ -616,11 +580,11 @@ namespace isobus
 
 					if (!foundReplaceableControlFunction)
 					{
-						for (auto currentActiveControlFunction = controlFunctionTable[partner->get_can_port()].begin(); currentActiveControlFunction != controlFunctionTable[partner->get_can_port()].end(); currentActiveControlFunction++)
+						for (auto currentActiveControlFunction = controlFunctionTable.begin(); currentActiveControlFunction != controlFunctionTable.end(); currentActiveControlFunction++)
 						{
 							if ((nullptr != (*currentActiveControlFunction)) &&
 							    (partner->check_matches_name((*currentActiveControlFunction)->get_NAME())) &&
-							    (partner->get_can_port() == (*currentActiveControlFunction)->get_can_port()) &&
+							    (partner->get_associated_network().lock() == shared_from_this()) &&
 							    (ControlFunction::Type::External == (*currentActiveControlFunction)->get_type()))
 							{
 								foundReplaceableControlFunction = true;
@@ -632,7 +596,7 @@ namespace isobus
 								partner->address = (*currentActiveControlFunction)->get_address();
 								partner->controlFunctionNAME = (*currentActiveControlFunction)->get_NAME();
 								partner->initialized = true;
-								controlFunctionTable[partner->get_can_port()][partner->address] = std::shared_ptr<ControlFunction>(partner);
+								controlFunctionTable[partner->address] = partner;
 								break;
 							}
 						}
@@ -644,8 +608,7 @@ namespace isobus
 		}
 	}
 
-	CANMessageFrame CANNetworkManager::construct_frame(std::uint32_t portIndex,
-	                                                   std::uint8_t sourceAddress,
+	CANMessageFrame CANNetworkManager::construct_frame(std::uint8_t sourceAddress,
 	                                                   std::uint8_t destAddress,
 	                                                   std::uint32_t parameterGroupNumber,
 	                                                   std::uint8_t priority,
@@ -694,7 +657,6 @@ namespace isobus
 
 			if (DEFAULT_IDENTIFIER != identifier)
 			{
-				txFrame.channel = portIndex;
 				memcpy(reinterpret_cast<void *>(txFrame.data), data, size);
 				txFrame.dataLength = size;
 				txFrame.isExtendedFrame = true;
@@ -704,13 +666,13 @@ namespace isobus
 		return txFrame;
 	}
 
-	std::shared_ptr<ControlFunction> CANNetworkManager::get_control_function(std::uint8_t channelIndex, std::uint8_t address) const
+	std::shared_ptr<ControlFunction> CANNetworkManager::get_control_function(std::uint8_t address) const
 	{
 		std::shared_ptr<ControlFunction> retVal = nullptr;
 
-		if ((address < NULL_CAN_ADDRESS) && (channelIndex < CAN_PORT_MAXIMUM))
+		if ((address < NULL_CAN_ADDRESS))
 		{
-			retVal = controlFunctionTable[channelIndex][address];
+			retVal = controlFunctionTable[address];
 		}
 		return retVal;
 	}
@@ -764,7 +726,7 @@ namespace isobus
 		      (NULL_CAN_ADDRESS == message.get_identifier().get_source_address()))))
 		{
 			// Message destined to global
-			for (std::size_t i = 0; i < get_number_global_parameter_group_number_callbacks(); i++)
+			for (std::size_t i = 0; i < globalParameterGroupNumberCallbacks.size(); i++)
 			{
 				if ((message.get_identifier().get_parameter_group_number() == get_global_parameter_group_number_callback(i).get_parameter_group_number()) &&
 				    (nullptr != get_global_parameter_group_number_callback(i).get_callback()))
@@ -787,7 +749,7 @@ namespace isobus
 						std::shared_ptr<PartneredControlFunction> currentControlFunction = PartneredControlFunction::get_partnered_control_function(j);
 
 						if ((nullptr != currentControlFunction) &&
-						    (currentControlFunction->get_can_port() == message.get_can_port_index()))
+						    (currentControlFunction->get_associated_network().lock() == shared_from_this()))
 						{
 							// Message matches CAN port for a partnered control function
 							for (std::size_t k = 0; k < currentControlFunction->get_number_parameter_group_number_callbacks(); k++)
@@ -824,7 +786,7 @@ namespace isobus
 				auto currentICF = InternalControlFunction::get_internal_control_function(i);
 
 				if ((nullptr != currentICF) &&
-				    (message.get_can_port_index() == currentICF->get_can_port()) &&
+				    (currentICF->get_associated_network().lock() == shared_from_this()) &&
 				    (currentICF->get_NAME().get_full_name() == targetNAME))
 				{
 					currentICF->process_commanded_address(message.get_uint8_at(8), {});
@@ -850,15 +812,14 @@ namespace isobus
 		}
 	}
 
-	bool CANNetworkManager::send_can_message_raw(std::uint32_t portIndex, std::uint8_t sourceAddress, std::uint8_t destAddress, std::uint32_t parameterGroupNumber, std::uint8_t priority, const void *data, std::uint32_t size) const
+	bool CANNetworkManager::send_can_message_raw(std::uint8_t sourceAddress, std::uint8_t destAddress, std::uint32_t parameterGroupNumber, std::uint8_t priority, const void *data, std::uint32_t size) const
 	{
-		CANMessageFrame tempFrame = construct_frame(portIndex, sourceAddress, destAddress, parameterGroupNumber, priority, data, size);
+		CANMessageFrame tempFrame = construct_frame(sourceAddress, destAddress, parameterGroupNumber, priority, data, size);
 		bool retVal = false;
 
-		if ((DEFAULT_IDENTIFIER != tempFrame.identifier) &&
-		    (portIndex < CAN_PORT_MAXIMUM))
+		if ((DEFAULT_IDENTIFIER != tempFrame.identifier))
 		{
-			retVal = send_can_message_frame_to_hardware(tempFrame);
+			retVal = send_can_message_frame_to_hardware(shared_from_this(), tempFrame);
 		}
 		return retVal;
 	}

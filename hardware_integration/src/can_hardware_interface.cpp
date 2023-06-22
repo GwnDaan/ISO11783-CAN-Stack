@@ -26,7 +26,7 @@ namespace isobus
 	isobus::EventDispatcher<const isobus::CANMessageFrame &> CANHardwareInterface::frameTransmittedEventDispatcher;
 	isobus::EventDispatcher<> CANHardwareInterface::periodicUpdateEventDispatcher;
 
-	std::vector<std::unique_ptr<CANHardwareInterface::CANHardware>> CANHardwareInterface::hardwareChannels;
+	std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardwareInterface::CANHardware>> CANHardwareInterface::hardwareChannels;
 	std::mutex CANHardwareInterface::hardwareChannelsMutex;
 	std::mutex CANHardwareInterface::updateMutex;
 	std::atomic_bool CANHardwareInterface::threadsStarted = { false };
@@ -38,91 +38,74 @@ namespace isobus
 		stop_threads();
 	}
 
-	bool send_can_message_frame_to_hardware(const CANMessageFrame &frame)
-	{
-		return CANHardwareInterface::transmit_can_frame(frame);
-	}
-
-	bool CANHardwareInterface::set_number_of_can_channels(uint8_t value)
+	bool CANHardwareInterface::assign_can_channel_frame_handler(std::shared_ptr<const CANNetworkManager> network, std::shared_ptr<CANHardwarePlugin> canDriver)
 	{
 		std::lock_guard<std::mutex> lock(hardwareChannelsMutex);
 
-		if (threadsStarted)
+		if (nullptr == network)
 		{
-			isobus::CANStackLogger::error("[HardwareInterface] Cannot set number of channels after interface is started.");
+			isobus::CANStackLogger::error("[HardwareInterface] Unable to assign frame handler for network, because the network is null.");
 			return false;
 		}
 
-		while (value > hardwareChannels.size())
+		if (0 == hardwareChannels.count(network))
 		{
-			hardwareChannels.push_back(std::make_unique<CANHardware>());
-			hardwareChannels.back()->receiveMessageThread = nullptr;
-			hardwareChannels.back()->frameHandler = nullptr;
+			hardwareChannels[network] = std::make_unique<CANHardware>();
 		}
-		while (value < hardwareChannels.size())
+		hardwareChannels[network]->frameHandler = canDriver;
+
+		if (threadsStarted)
 		{
-			hardwareChannels.pop_back();
+			hardwareChannels[network]->frameHandler->open();
+
+			if (hardwareChannels[network]->frameHandler->get_is_valid())
+			{
+				hardwareChannels[network]->receiveMessageThread = std::make_unique<std::thread>(receive_can_frame_thread_function, network);
+			}
 		}
+
 		return true;
 	}
 
-	bool CANHardwareInterface::assign_can_channel_frame_handler(std::uint8_t channelIndex, std::shared_ptr<CANHardwarePlugin> driver)
+	std::size_t CANHardwareInterface::get_number_of_can_channels()
+	{
+		return hardwareChannels.size();
+	}
+
+	bool CANHardwareInterface::unassign_can_channel_frame_handler(std::shared_ptr<const CANNetworkManager> network)
 	{
 		std::lock_guard<std::mutex> lock(hardwareChannelsMutex);
 
-		if (threadsStarted)
+		if (0 == hardwareChannels.count(network))
 		{
-			isobus::CANStackLogger::error("[HardwareInterface] Cannot assign frame handlers after interface is started.");
+			//! @todo find a way to add a identifying string to the network manager
+			isobus::CANStackLogger::error("[HardwareInterface] Unable to remove frame handler for network, because the network is not assigned.");
 			return false;
 		}
 
-		if (channelIndex >= hardwareChannels.size())
+		if (nullptr == hardwareChannels[network]->frameHandler)
 		{
-			isobus::CANStackLogger::error("[HardwareInterface] Unable to set frame handler at channel " + isobus::to_string(channelIndex) +
-			                              ", because there are only " + isobus::to_string(hardwareChannels.size()) + " channels set. " +
-			                              "Use set_number_of_can_channels() to increase the number of channels before assigning frame handlers.");
+			//! @todo find a way to add a identifying string to the network manager
+			isobus::CANStackLogger::error("[HardwareInterface] Unable to remove frame handler for network, because there is no frame handler assigned.");
 			return false;
 		}
-
-		if (nullptr != hardwareChannels[channelIndex]->frameHandler)
-		{
-			isobus::CANStackLogger::error("[HardwareInterface] Unable to set frame handler at channel " + isobus::to_string(channelIndex) + ", because it is already assigned.");
-			return false;
-		}
-
-		hardwareChannels[channelIndex]->frameHandler = driver;
-		return true;
-	}
-
-	std::uint8_t CANHardwareInterface::get_number_of_can_channels()
-	{
-		return static_cast<std::uint8_t>(hardwareChannels.size() & std::numeric_limits<std::uint8_t>::max());
-	}
-
-	bool CANHardwareInterface::unassign_can_channel_frame_handler(std::uint8_t channelIndex)
-	{
-		std::lock_guard<std::mutex> lock(hardwareChannelsMutex);
 
 		if (threadsStarted)
 		{
-			isobus::CANStackLogger::error("[HardwareInterface] Cannot remove frame handlers after interface is started.");
-			return false;
+			if (nullptr != hardwareChannels[network]->frameHandler)
+			{
+				hardwareChannels[network]->frameHandler->close();
+			}
+			if (nullptr != hardwareChannels[network]->receiveMessageThread)
+			{
+				if (hardwareChannels[network]->receiveMessageThread->joinable())
+				{
+					hardwareChannels[network]->receiveMessageThread->join();
+				}
+			}
 		}
 
-		if (channelIndex >= hardwareChannels.size())
-		{
-			isobus::CANStackLogger::error("[HardwareInterface] Unable to remove frame handler at channel " + isobus::to_string(channelIndex) +
-			                              ", because there are only " + isobus::to_string(hardwareChannels.size()) + " channels set.");
-			return false;
-		}
-
-		if (nullptr == hardwareChannels[channelIndex]->frameHandler)
-		{
-			isobus::CANStackLogger::error("[HardwareInterface] Unable to remove frame handler at channel " + isobus::to_string(channelIndex) + ", because it is not assigned.");
-			return false;
-		}
-
-		hardwareChannels[channelIndex]->frameHandler = nullptr;
+		hardwareChannels.erase(network);
 		return true;
 	}
 
@@ -141,18 +124,17 @@ namespace isobus
 
 		threadsStarted = true;
 
-		for (std::size_t i = 0; i < hardwareChannels.size(); i++)
-		{
-			if (nullptr != hardwareChannels[i]->frameHandler)
+		std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+			if (nullptr != hardware.second->frameHandler)
 			{
-				hardwareChannels[i]->frameHandler->open();
+				hardware.second->frameHandler->open();
 
-				if (hardwareChannels[i]->frameHandler->get_is_valid())
+				if (hardware.second->frameHandler->get_is_valid())
 				{
-					hardwareChannels[i]->receiveMessageThread = std::make_unique<std::thread>(receive_can_frame_thread_function, static_cast<std::uint8_t>(i));
+					hardware.second->receiveMessageThread = std::make_unique<std::thread>(receive_can_frame_thread_function, hardware.first);
 				}
 			}
-		}
+		});
 
 		return true;
 	}
@@ -167,17 +149,17 @@ namespace isobus
 		stop_threads();
 
 		std::lock_guard<std::mutex> channelsLock(hardwareChannelsMutex);
-		std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unique_ptr<CANHardware> &channel) {
-			if (nullptr != channel->frameHandler)
+		std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+			if (nullptr != hardware.second->frameHandler)
 			{
-				channel->frameHandler = nullptr;
+				hardware.second->frameHandler = nullptr;
 			}
-			std::unique_lock<std::mutex> transmittingLock(channel->messagesToBeTransmittedMutex);
-			channel->messagesToBeTransmitted.clear();
+			std::unique_lock<std::mutex> transmittingLock(hardware.second->messagesToBeTransmittedMutex);
+			hardware.second->messagesToBeTransmitted.clear();
 			transmittingLock.unlock();
 
-			std::unique_lock<std::mutex> receivingLock(channel->receivedMessagesMutex);
-			channel->receivedMessages.clear();
+			std::unique_lock<std::mutex> receivingLock(hardware.second->receivedMessagesMutex);
+			hardware.second->receivedMessages.clear();
 			receivingLock.unlock();
 		});
 		return true;
@@ -187,7 +169,16 @@ namespace isobus
 		return threadsStarted;
 	}
 
-	bool CANHardwareInterface::transmit_can_frame(const isobus::CANMessageFrame &frame)
+	bool send_can_message_frame_to_hardware(const std::weak_ptr<const CANNetworkManager> associatedNetwork, const CANMessageFrame &frame)
+	{
+		if (auto network = associatedNetwork.lock())
+		{
+			return CANHardwareInterface::transmit_can_frame(network, frame);
+		}
+		return false;
+	}
+
+	bool CANHardwareInterface::transmit_can_frame(std::shared_ptr<const CANNetworkManager> network, const CANMessageFrame &frame)
 	{
 		if (!threadsStarted)
 		{
@@ -195,21 +186,15 @@ namespace isobus
 			return false;
 		}
 
-		if (frame.channel >= hardwareChannels.size())
+		if (0 == hardwareChannels.count(network))
 		{
-			isobus::CANStackLogger::error("[HardwareInterface] Cannot transmit message on channel " + isobus::to_string(frame.channel) +
-			                              ", because there are only " + isobus::to_string(hardwareChannels.size()) + " channels set.");
+			//! @todo find a way to add a identifying string to the network manager
+			isobus::CANStackLogger::warn("[HardwareInterface] Unable to transmit message on network, because the network is not assigned.");
 			return false;
 		}
 
-		const std::unique_ptr<CANHardware> &channel = hardwareChannels[frame.channel];
-		if (nullptr == channel->frameHandler)
-		{
-			isobus::CANStackLogger::error("[HardwareInterface] Cannot transmit message on channel " + isobus::to_string(frame.channel) + ", because it is not assigned.");
-			return false;
-		}
-
-		if (channel->frameHandler->get_is_valid())
+		const std::unique_ptr<CANHardware> &channel = hardwareChannels[network];
+		if ((nullptr != channel->frameHandler) && channel->frameHandler->get_is_valid())
 		{
 			std::lock_guard<std::mutex> lock(channel->messagesToBeTransmittedMutex);
 			channel->messagesToBeTransmitted.push_back(frame);
@@ -260,16 +245,16 @@ namespace isobus
 			{
 				// Stage 1 - Receiving messages from hardware
 				channelsLock.lock();
-				std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unique_ptr<CANHardware> &channel) {
-					std::lock_guard<std::mutex> lock(channel->receivedMessagesMutex);
-					while (!channel->receivedMessages.empty())
+				std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+					std::lock_guard<std::mutex> lock(hardware.second->receivedMessagesMutex);
+					while (!hardware.second->receivedMessages.empty())
 					{
-						const auto &frame = channel->receivedMessages.front();
+						const auto &frame = hardware.second->receivedMessages.front();
 
 						frameReceivedEventDispatcher.invoke(frame);
-						isobus::receive_can_message_frame_from_hardware(frame);
+						isobus::receive_can_message_frame_from_hardware(hardware.first, frame);
 
-						channel->receivedMessages.pop_front();
+						hardware.second->receivedMessages.pop_front();
 					}
 				});
 				channelsLock.unlock();
@@ -279,22 +264,24 @@ namespace isobus
 				{
 					stackNeedsUpdate = false;
 					periodicUpdateEventDispatcher.invoke();
-					isobus::periodic_update_from_hardware();
+					std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+						isobus::periodic_update_from_hardware(hardware.first);
+					});
 				}
 
 				// Stage 3 - Transmitting messages to hardware
 				channelsLock.lock();
-				std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unique_ptr<CANHardware> &channel) {
-					std::lock_guard<std::mutex> lock(channel->messagesToBeTransmittedMutex);
-					while (!channel->messagesToBeTransmitted.empty())
+				std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+					std::lock_guard<std::mutex> lock(hardware.second->messagesToBeTransmittedMutex);
+					while (!hardware.second->messagesToBeTransmitted.empty())
 					{
-						const auto &frame = channel->messagesToBeTransmitted.front();
+						const auto &frame = hardware.second->messagesToBeTransmitted.front();
 
-						if (transmit_can_frame_from_buffer(frame))
+						if ((hardware.second->frameHandler != nullptr) && hardware.second->frameHandler->write_frame(frame))
 						{
 							frameTransmittedEventDispatcher.invoke(frame);
-							isobus::on_transmit_can_message_frame_from_hardware(frame);
-							channel->messagesToBeTransmitted.pop_front();
+							isobus::on_transmit_can_message_frame_from_hardware(hardware.first, frame);
+							hardware.second->messagesToBeTransmitted.pop_front();
 						}
 						else
 						{
@@ -307,45 +294,36 @@ namespace isobus
 		}
 	}
 
-	void CANHardwareInterface::receive_can_frame_thread_function(std::uint8_t channelIndex)
+	void CANHardwareInterface::receive_can_frame_thread_function(std::weak_ptr<const CANNetworkManager> associatedNetwork)
 	{
 		std::unique_lock<std::mutex> channelsLock(hardwareChannelsMutex);
 		// Wait until everything is running
 		channelsLock.unlock();
 
 		isobus::CANMessageFrame frame;
-		while ((threadsStarted) &&
-		       (nullptr != hardwareChannels[channelIndex]->frameHandler))
+		while (threadsStarted &&
+		       associatedNetwork.lock() &&
+		       (0 != hardwareChannels.count(associatedNetwork.lock())))
 		{
-			if (hardwareChannels[channelIndex]->frameHandler->get_is_valid())
+			auto network = associatedNetwork.lock();
+			if ((nullptr != hardwareChannels[network]) && hardwareChannels[network]->frameHandler->get_is_valid())
 			{
 				// Socket or other hardware still open
-				if (hardwareChannels[channelIndex]->frameHandler->read_frame(frame))
+				if (hardwareChannels[network]->frameHandler->read_frame(frame))
 				{
-					frame.channel = channelIndex;
-					std::unique_lock<std::mutex> receiveLock(hardwareChannels[channelIndex]->receivedMessagesMutex);
-					hardwareChannels[channelIndex]->receivedMessages.push_back(frame);
+					std::unique_lock<std::mutex> receiveLock(hardwareChannels[network]->receivedMessagesMutex);
+					hardwareChannels[network]->receivedMessages.push_back(frame);
 					receiveLock.unlock();
 					updateThreadWakeupCondition.notify_all();
 				}
 			}
 			else
 			{
-				isobus::CANStackLogger::CAN_stack_log(isobus::CANStackLogger::LoggingLevel::Critical, "[CAN Rx Thread]: CAN Channel " + isobus::to_string(channelIndex) + " appears to be invalid.");
+				//! @todo find a way to add a identifying string to the network manager
+				CANStackLogger::error("[CAN Rx Thread] Frame handler is unassigned, or invalid.");
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Arbitrary, but don't want to infinite loop on the validity check.
 			}
 		}
-	}
-
-	bool CANHardwareInterface::transmit_can_frame_from_buffer(const isobus::CANMessageFrame &frame)
-	{
-		bool retVal = false;
-		if (frame.channel < hardwareChannels.size())
-		{
-			retVal = ((nullptr != hardwareChannels[frame.channel]->frameHandler) &&
-			          (hardwareChannels[frame.channel]->frameHandler->write_frame(frame)));
-		}
-		return retVal;
 	}
 
 	void CANHardwareInterface::periodic_update_function()
@@ -384,18 +362,18 @@ namespace isobus
 			wakeupThread = nullptr;
 		}
 
-		std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unique_ptr<CANHardware> &channel) {
-			if (nullptr != channel->frameHandler)
+		std::for_each(hardwareChannels.begin(), hardwareChannels.end(), [](const std::unordered_map<std::shared_ptr<const CANNetworkManager>, std::unique_ptr<CANHardware>>::value_type &hardware) {
+			if (nullptr != hardware.second->frameHandler)
 			{
-				channel->frameHandler->close();
+				hardware.second->frameHandler->close();
 			}
-			if (nullptr != channel->receiveMessageThread)
+			if (nullptr != hardware.second->receiveMessageThread)
 			{
-				if (channel->receiveMessageThread->joinable())
+				if (hardware.second->receiveMessageThread->joinable())
 				{
-					channel->receiveMessageThread->join();
+					hardware.second->receiveMessageThread->join();
 				}
-				channel->receiveMessageThread = nullptr;
+				hardware.second->receiveMessageThread = nullptr;
 			}
 		});
 	}

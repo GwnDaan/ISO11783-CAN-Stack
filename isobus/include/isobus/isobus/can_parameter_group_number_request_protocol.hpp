@@ -32,7 +32,8 @@ namespace isobus
 	{
 	public:
 		/// @brief The protocol's initializer function
-		void initialize(CANLibBadge<CANNetworkManager>) override;
+		/// @param[in] network The network manager that this protocol is being initialized for
+		void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>) override;
 
 		/// @brief Used to tell the CAN stack that PGN requests should be handled for the specified internal control function
 		/// @details This will allocate an instance of this protocol
@@ -195,6 +196,7 @@ namespace isobus
 
 		static std::list<ParameterGroupNumberRequestProtocol *> pgnRequestProtocolList; ///< List of all PGN request protocol instances (one per ICF)
 
+		std::weak_ptr<CANNetworkManager> associatedNetwork; ///< The network manager that this protocol is attached to
 		std::shared_ptr<InternalControlFunction> myControlFunction; ///< The internal control function that this protocol will send from
 		std::vector<PGNRequestCallbackInfo> pgnRequestCallbacks; ///< A list of all registered PGN callbacks and the PGN associated with each callback
 		std::vector<PGNRequestForRepetitionRateCallbackInfo> repetitionRateCallbacks; ///< A list of all registered request for repetition rate callbacks and the PGN associated with the callback

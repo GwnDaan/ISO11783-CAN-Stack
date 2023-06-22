@@ -143,7 +143,7 @@ namespace isobus
 		/// @brief A generic way to initialize a protocol
 		/// @details The network manager will call a protocol's initialize function
 		/// when it is first updated, if it has yet to be initialized.
-		void initialize(CANLibBadge<CANNetworkManager>) override;
+		virtual void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>);
 
 		/// @brief A generic way for a protocol to process a received message
 		/// @param[in] message A received CAN message

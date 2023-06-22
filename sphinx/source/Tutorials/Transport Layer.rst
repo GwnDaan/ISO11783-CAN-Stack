@@ -27,7 +27,7 @@ To send a message of more than 8 bytes, simply send a message like normal, but w
 
    std::uint8_t longMessage[2000] = {0};
 
-   isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, longMessage, 2000, myECU.get(), myPartner.get());
+   isobus::CANNetworkManager::send_can_message(0xEF00, longMessage, 2000, myECU.get(), myPartner.get());
 
 That's it! Your message will be sent with either TP or ETP depending on the size of the payload.
 

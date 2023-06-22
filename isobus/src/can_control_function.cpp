@@ -17,25 +17,28 @@ namespace isobus
 {
 	std::mutex ControlFunction::controlFunctionProcessingMutex;
 
-	isobus::ControlFunction::ControlFunction(NAME NAMEValue, std::uint8_t addressValue, std::uint8_t CANPort, Type type) :
+	isobus::ControlFunction::ControlFunction(NAME NAMEValue, std::uint8_t addressValue, std::shared_ptr<CANNetworkManager> network, Type type) :
 	  controlFunctionType(type),
 	  controlFunctionNAME(NAMEValue),
 	  address(addressValue),
-	  canPortIndex(CANPort)
+	  associatedNetwork(network)
 	{
 	}
 
-	std::shared_ptr<ControlFunction> ControlFunction::create(NAME NAMEValue, std::uint8_t addressValue, std::uint8_t CANPort)
+	std::shared_ptr<ControlFunction> ControlFunction::create(NAME NAMEValue, std::uint8_t addressValue, std::shared_ptr<CANNetworkManager> network)
 	{
 		// Unfortunately, we can't use `std::make_shared` here because the constructor is private
-		return std::shared_ptr<ControlFunction>(new ControlFunction(NAMEValue, addressValue, CANPort));
+		return std::shared_ptr<ControlFunction>(new ControlFunction(NAMEValue, addressValue, network));
 	}
 
 	bool ControlFunction::destroy(std::uint32_t expectedRefCount)
 	{
 		std::lock_guard<std::mutex> lock(controlFunctionProcessingMutex);
 
-		CANNetworkManager::CANNetwork.on_control_function_destroyed(shared_from_this(), {});
+		if (auto network = associatedNetwork.lock())
+		{
+			network->on_control_function_destroyed(shared_from_this(), {});
+		}
 
 		return shared_from_this().use_count() == expectedRefCount + 1;
 	}
@@ -50,9 +53,9 @@ namespace isobus
 		return ((BROADCAST_CAN_ADDRESS != address) && (NULL_CAN_ADDRESS != address));
 	}
 
-	std::uint8_t ControlFunction::get_can_port() const
+	std::weak_ptr<CANNetworkManager> ControlFunction::get_associated_network() const
 	{
-		return canPortIndex;
+		return associatedNetwork;
 	}
 
 	NAME ControlFunction::get_NAME() const

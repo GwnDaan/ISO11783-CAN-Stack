@@ -100,8 +100,8 @@ int main()
 		return -1;
 	}
 
-	isobus::CANHardwareInterface::set_number_of_can_channels(1);
-	isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
+	auto network = std::make_shared<isobus::CANNetworkManager>();
+	isobus::CANHardwareInterface::assign_can_channel_frame_handler(network, canDriver);
 
 	if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
 	{
@@ -125,7 +125,7 @@ int main()
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
 	std::signal(SIGINT, signal_handler);
 
 	// Wait to make sure address claiming is done. The time is arbitrary.
@@ -166,7 +166,7 @@ int main()
 		{
 			// If someone has requested a repetition rate for PROPA, service it here (in the application layer)
 			std::uint8_t buffer[isobus::CAN_DATA_LENGTH] = { 0 };
-			isobus::CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(isobus::CANLibParameterGroupNumber::ProprietaryA), buffer, isobus::CAN_DATA_LENGTH, TestInternalECU, repetitionRateRequestor);
+			isobus::CANNetworkManager::send_can_message(static_cast<std::uint32_t>(isobus::CANLibParameterGroupNumber::ProprietaryA), buffer, isobus::CAN_DATA_LENGTH, TestInternalECU, repetitionRateRequestor);
 			std::this_thread::sleep_for(std::chrono::milliseconds(propARepetitionRate_ms));
 		}
 		else

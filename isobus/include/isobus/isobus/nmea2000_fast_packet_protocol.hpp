@@ -40,7 +40,7 @@ namespace isobus
 		/// @brief A generic way to initialize a protocol
 		/// @details The network manager will call a protocol's initialize function
 		/// when it is first updated, if it has yet to be initialized.
-		void initialize(CANLibBadge<CANNetworkManager>) override;
+		void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>) override;
 
 		/// @brief Similar to add_parameter_group_number_callback but tells the stack to parse those PGNs as Fast Packet
 		/// @param[in] parameterGroupNumber The PGN to parse as fast packet
@@ -93,10 +93,10 @@ namespace isobus
 			enum class Direction
 			{
 				Transmit, ///< We are transmitting a message
-				Receive ///< We are receving a message
+				Receive ///< We are receiving a message
 			};
 
-			/// @brief A useful way to compare sesson objects to each other for equality
+			/// @brief A useful way to compare session objects to each other for equality
 			bool operator==(const FastPacketProtocolSession &obj);
 
 			/// @brief Get the total number of bytes that will be sent or received in this session
@@ -108,22 +108,18 @@ namespace isobus
 
 			/// @brief The constructor for a TP session
 			/// @param[in] sessionDirection Tx or Rx
-			/// @param[in] canPortIndex The CAN channel index for the session
-			FastPacketProtocolSession(Direction sessionDirection, std::uint8_t canPortIndex);
-
-			/// @brief The destructor for a TP session
-			~FastPacketProtocolSession();
+			FastPacketProtocolSession(Direction sessionDirection);
 
 			CANMessage sessionMessage; ///< A CAN message is used in the session to represent and store data like PGN
-			TransmitCompleteCallback sessionCompleteCallback; ///< A callback that is to be called when the session is completed
-			DataChunkCallback frameChunkCallback; ///< A callback that might be used to get chunks of data to send
-			std::uint32_t frameChunkCallbackMessageLength; ///< The length of the message that is being sent in chunks
-			void *parent; ///< A generic context variable that helps identify what object callbacks are destined for. Can be nullptr
-			std::uint32_t timestamp_ms; ///< A timestamp used to track session timeouts
-			std::uint16_t lastPacketNumber; ///< The last processed sequence number for this set of packets
-			std::uint8_t packetCount; ///< The total number of packets to receive or send in this session
-			std::uint8_t processedPacketsThisSession; ///< The total processed packet count for the whole session so far
-			std::uint8_t sequenceNumber; ///< The sequence number for this PGN
+			TransmitCompleteCallback sessionCompleteCallback = nullptr; ///< A callback that is to be called when the session is completed
+			DataChunkCallback frameChunkCallback = nullptr; ///< A callback that might be used to get chunks of data to send
+			std::uint32_t frameChunkCallbackMessageLength = 0; ///< The length of the message that is being sent in chunks
+			void *parent = nullptr; ///< A generic context variable that helps identify what object callbacks are destined for. Can be nullptr
+			std::uint32_t timestamp_ms = 0; ///< A timestamp used to track session timeouts
+			std::uint16_t lastPacketNumber = 0; ///< The last processed sequence number for this set of packets
+			std::uint8_t packetCount = 0; ///< The total number of packets to receive or send in this session
+			std::uint8_t processedPacketsThisSession = 0; ///< The total processed packet count for the whole session so far
+			std::uint8_t sequenceNumber = 0; ///< The sequence number for this PGN
 			const Direction sessionDirection; ///< Represents Tx or Rx session
 		};
 
@@ -203,6 +199,7 @@ namespace isobus
 		static constexpr std::uint8_t SEQUENCE_NUMBER_BIT_OFFSET = 0x05; ///< The bit offset into the first byte of data to get the seq number
 		static constexpr std::uint8_t PROTOCOL_BYTES_PER_FRAME = 7; ///< The number of payload bytes per frame for all but the first message, which has 6
 
+		std::weak_ptr<CANNetworkManager> associatedNetwork; ///< The network manager that this protocol is associated with
 		std::vector<FastPacketProtocolSession *> activeSessions; ///< A list of all active TP sessions
 		std::vector<FastPacketHistory> sessionHistory; ///< Used to keep track of sequence numbers for future sessions
 		std::vector<ParameterGroupNumberCallbackData> parameterGroupNumberCallbacks; ///< A list of all parameter group number callbacks that will be parsed as fast packet messages

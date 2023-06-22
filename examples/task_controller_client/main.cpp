@@ -49,8 +49,9 @@ int main()
 
 	isobus::CANStackLogger::set_can_stack_logger_sink(&logger);
 	isobus::CANStackLogger::set_log_level(isobus::CANStackLogger::LoggingLevel::Debug); // Change this to Debug to see more information
-	isobus::CANHardwareInterface::set_number_of_can_channels(1);
-	isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
+
+	auto network = std::make_shared<isobus::CANNetworkManager>();
+	isobus::CANHardwareInterface::assign_can_channel_frame_handler(network, canDriver);
 
 	if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
 	{
@@ -76,8 +77,8 @@ int main()
 
 	const isobus::NAMEFilter filterTaskController(isobus::NAME::NAMEParameters::FunctionCode, static_cast<std::uint8_t>(isobus::NAME::Function::TaskController));
 	const std::vector<isobus::NAMEFilter> tcNameFilters = { filterTaskController };
-	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
-	auto TestPartnerTC = isobus::PartneredControlFunction::create(0, tcNameFilters);
+	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
+	auto TestPartnerTC = isobus::PartneredControlFunction::create(network, tcNameFilters);
 
 	TestTCClient = std::make_shared<isobus::TaskControllerClient>(TestPartnerTC, TestInternalECU, nullptr);
 

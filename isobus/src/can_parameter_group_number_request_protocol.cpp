@@ -19,13 +19,14 @@ namespace isobus
 {
 	std::list<ParameterGroupNumberRequestProtocol *> ParameterGroupNumberRequestProtocol::pgnRequestProtocolList;
 
-	void ParameterGroupNumberRequestProtocol::initialize(CANLibBadge<CANNetworkManager>)
+	void ParameterGroupNumberRequestProtocol::initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>)
 	{
 		if (!initialized)
 		{
 			initialized = true;
-			CANNetworkManager::CANNetwork.add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_message, this);
-			CANNetworkManager::CANNetwork.add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate), process_message, this);
+			associatedNetwork = network;
+			network->add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_message, this);
+			network->add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate), process_message, this);
 		}
 	}
 
@@ -89,11 +90,11 @@ namespace isobus
 		buffer[1] = static_cast<std::uint8_t>((pgn >> 8) & 0xFF);
 		buffer[2] = static_cast<std::uint8_t>((pgn >> 16) & 0xFF);
 
-		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest),
-		                                                      buffer.data(),
-		                                                      PGN_REQUEST_LENGTH,
-		                                                      source,
-		                                                      destination);
+		return CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest),
+		                                           buffer.data(),
+		                                           PGN_REQUEST_LENGTH,
+		                                           source,
+		                                           destination);
 	}
 
 	bool ParameterGroupNumberRequestProtocol::request_repetition_rate(std::uint32_t pgn, std::uint16_t repetitionRate_ms, std::shared_ptr<InternalControlFunction> source, std::shared_ptr<ControlFunction> destination)
@@ -109,11 +110,11 @@ namespace isobus
 		buffer[6] = 0xFF;
 		buffer[7] = 0xFF;
 
-		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate),
-		                                                      buffer.data(),
-		                                                      CAN_DATA_LENGTH,
-		                                                      source,
-		                                                      destination);
+		return CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate),
+		                                           buffer.data(),
+		                                           CAN_DATA_LENGTH,
+		                                           source,
+		                                           destination);
 	}
 
 	bool ParameterGroupNumberRequestProtocol::register_pgn_request_callback(std::uint32_t pgn, PGNRequestCallback callback, void *parentPointer)
@@ -330,8 +331,11 @@ namespace isobus
 	{
 		if (initialized)
 		{
-			CANNetworkManager::CANNetwork.remove_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_message, this);
-			CANNetworkManager::CANNetwork.remove_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate), process_message, this);
+			if (auto network = associatedNetwork.lock())
+			{
+				network->remove_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_message, this);
+				network->remove_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::RequestForRepetitionRate), process_message, this);
+			}
 		}
 	}
 
@@ -372,11 +376,11 @@ namespace isobus
 			buffer[6] = static_cast<std::uint8_t>((parameterGroupNumber >> 8) & 0xFF);
 			buffer[7] = static_cast<std::uint8_t>((parameterGroupNumber >> 16) & 0xFF);
 
-			retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::Acknowledge),
-			                                                        buffer.data(),
-			                                                        CAN_DATA_LENGTH,
-			                                                        source,
-			                                                        nullptr);
+			retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::Acknowledge),
+			                                             buffer.data(),
+			                                             CAN_DATA_LENGTH,
+			                                             source,
+			                                             nullptr);
 		}
 		return retVal;
 	}

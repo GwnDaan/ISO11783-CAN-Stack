@@ -18,6 +18,8 @@
 
 namespace isobus
 {
+	class CANNetworkManager;
+
 	//================================================================================================
 	/// @class ControlFunction
 	///
@@ -39,8 +41,8 @@ namespace isobus
 		/// @brief The factory function to construct a control function
 		/// @param[in] NAMEValue The NAME of the control function
 		/// @param[in] addressValue The current address of the control function
-		/// @param[in] CANPort The CAN channel index that the control function communicates on
-		static std::shared_ptr<ControlFunction> create(NAME NAMEValue, std::uint8_t addressValue, std::uint8_t CANPort);
+		/// @param[in] network The network that the control function is associated with
+		static std::shared_ptr<ControlFunction> create(NAME NAMEValue, std::uint8_t addressValue, std::shared_ptr<CANNetworkManager> network);
 
 		/// @brief Destroys this control function, by removing it from the network manager
 		/// @param[in] expectedRefCount The expected number of shared pointers to this control function after removal
@@ -55,9 +57,9 @@ namespace isobus
 		/// @returns true if the address is < 0xFE
 		bool get_address_valid() const;
 
-		/// @brief Returns the CAN channel index the control function communicates on
-		/// @returns The control function's CAN channel index
-		std::uint8_t get_can_port() const;
+		/// @brief Returns the network that this control function is associated with
+		/// @returns A weak pointer to the associated network object
+		std::weak_ptr<CANNetworkManager> get_associated_network() const;
 
 		/// @brief Returns the NAME of the control function as described by its address claim message
 		/// @returns The control function's NAME
@@ -75,15 +77,15 @@ namespace isobus
 		/// @brief The protected constructor for the control function, which is called by the (inherited) factory function
 		/// @param[in] NAMEValue The NAME of the control function
 		/// @param[in] addressValue The current address of the control function
-		/// @param[in] CANPort The CAN channel index that the control function communicates on
-		ControlFunction(NAME NAMEValue, std::uint8_t addressValue, std::uint8_t CANPort, Type type = Type::External);
+		/// @param[in] network The network that the control function is associated with
+		ControlFunction(NAME NAMEValue, std::uint8_t addressValue, std::shared_ptr<CANNetworkManager> network, Type type = Type::External);
 
 		friend class CANNetworkManager;
 		static std::mutex controlFunctionProcessingMutex; ///< Protects the control function tables
 		const Type controlFunctionType; ///< The Type of the control function
 		NAME controlFunctionNAME; ///< The NAME of the control function
 		std::uint8_t address; ///< The address of the control function
-		const std::uint8_t canPortIndex; ///< The CAN channel index of the control function
+		const std::weak_ptr<CANNetworkManager> associatedNetwork; ///< The network that this control function is associated with
 	};
 
 } // namespace isobus

@@ -53,7 +53,7 @@ The main reason I use shared_ptr is because that is what the interface for a Vir
 
    std::shared_ptr<isobus::PartneredControlFunction> myPartner = nullptr;
 
-   myPartner = isobus::PartneredControlFunction::create(0, myPartnerFilter);
+   myPartner = isobus::PartneredControlFunction::create(network, myPartnerFilter);
 
 Above, we've just instantiated a partner *on CAN channel 0* using the filter we made in the previous step.
 
@@ -72,7 +72,7 @@ In this step, we will construct and send a proprietary A message to our partner.
 
    std::array<std::uint8_t, isobus::CAN_DATA_LENGTH> messageData = {0}; // Data is just all zeros
 
-   isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
+   isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
 
 As you can see, the call to the network manager to send the message is nearly identical to the one to send it to the broadcast address, but with the addition of our partner :code:`myPartner`.
 
@@ -115,7 +115,7 @@ The final program for this tutorial (including the code from the previous Hello 
 
       // Set up the hardware layer to use SocketCAN interface on channel "can0"
       std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-      isobus::CANHardwareInterface::set_number_of_can_channels(1);
+      isobus::auto network = std::make_shared<CANNetworkManager>();
       isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
       if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -145,20 +145,20 @@ The final program for this tutorial (including the code from the previous Hello 
       myPartnerFilter.push_back(virtualTerminalFilter);
 
       // Create our InternalControlFunction
-      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
       // Create our PartneredControlFunction
-      myPartner = isobus::PartneredControlFunction::create(0, myPartnerFilter);
+      myPartner = isobus::PartneredControlFunction::create(network, myPartnerFilter);
 
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
       std::array<std::uint8_t, isobus::CAN_DATA_LENGTH> messageData = {0}; // Data is just all zeros
 
       // Send a message to the broadcast address
-      isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
+      isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
 
       // Send a message to our partner (if it is present)
-      isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
+      isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get(), myPartner.get());
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
 

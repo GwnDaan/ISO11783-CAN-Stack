@@ -13,7 +13,7 @@ using namespace isobus;
 TEST(LANGUAGE_COMMAND_INTERFACE_TESTS, BasicConstructionAndInit)
 {
 	NAME clientNAME(0);
-	auto internalECU = InternalControlFunction::create(clientNAME, 0x26, 0);
+	auto internalECU = InternalControlFunction::create(clientNAME, 0x26, nullptr);
 	LanguageCommandInterface interfaceUnderTest(internalECU);
 	EXPECT_EQ(false, interfaceUnderTest.get_initialized());
 	EXPECT_EQ(false, interfaceUnderTest.send_request_language_command());
@@ -41,9 +41,9 @@ TEST(LANGUAGE_COMMAND_INTERFACE_TESTS, ValidPartner)
 	vtNameFilters.push_back(testFilter);
 
 	NAME clientNAME(0);
-	auto internalECU = InternalControlFunction::create(clientNAME, 0x26, 0);
+	auto internalECU = InternalControlFunction::create(clientNAME, 0x26, nullptr);
 
-	auto vtPartner = PartneredControlFunction::create(0, vtNameFilters);
+	auto vtPartner = PartneredControlFunction::create(nullptr, vtNameFilters);
 	LanguageCommandInterface interfaceUnderTest(internalECU, vtPartner);
 	interfaceUnderTest.initialize();
 	ASSERT_TRUE(interfaceUnderTest.get_initialized());
@@ -65,12 +65,12 @@ TEST(LANGUAGE_COMMAND_INTERFACE_TESTS, Uninitialized)
 TEST(LANGUAGE_COMMAND_INTERFACE_TESTS, MessageContentParsing)
 {
 	NAME clientNAME(0);
-	auto internalECU = InternalControlFunction::create(clientNAME, 0x80, 0);
+	auto internalECU = InternalControlFunction::create(clientNAME, 0x80, nullptr);
 	LanguageCommandInterface interfaceUnderTest(internalECU, nullptr);
 
 	interfaceUnderTest.initialize();
 
-	CANMessage testMessage(0);
+	CANMessage testMessage;
 	testMessage.set_identifier(CANIdentifier(CANIdentifier::Type::Extended, 0xFE0F, CANIdentifier::PriorityDefault6, 0x80, 0x81));
 
 	// Make a message that is too short

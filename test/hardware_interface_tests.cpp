@@ -14,9 +14,10 @@ TEST(HARDWARE_INTERFACE_TESTS, SendMessageToHardware)
 {
 	auto sender = std::make_shared<VirtualCANPlugin>();
 	auto receiver = std::make_shared<VirtualCANPlugin>();
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, sender);
-	CANHardwareInterface::start();
+
+	auto network = std::make_shared<CANNetworkManager>();
+	ASSERT_TRUE(CANHardwareInterface::assign_can_channel_frame_handler(network, sender));
+	ASSERT_TRUE(CANHardwareInterface::start());
 
 	CANMessageFrame fakeFrame;
 	memset(&fakeFrame, 0, sizeof(CANMessageFrame));
@@ -24,13 +25,12 @@ TEST(HARDWARE_INTERFACE_TESTS, SendMessageToHardware)
 	fakeFrame.isExtendedFrame = false;
 	fakeFrame.dataLength = 1;
 	fakeFrame.data[0] = 0x01;
-	fakeFrame.channel = 0;
 
 	CANMessageFrame receiveFrame;
 	memset(&receiveFrame, 0, sizeof(CANMessageFrame));
 	auto future = std::async(std::launch::async, [&] { receiver->read_frame(receiveFrame); });
 
-	isobus::send_can_message_frame_to_hardware(fakeFrame);
+	isobus::send_can_message_frame_to_hardware(network, fakeFrame);
 
 	EXPECT_TRUE(future.wait_for(std::chrono::seconds(5)) != std::future_status::timeout);
 
@@ -45,9 +45,9 @@ TEST(HARDWARE_INTERFACE_TESTS, SendMessageToHardware)
 TEST(HARDWARE_INTERFACE_TESTS, ReceiveMessageFromHardware)
 {
 	auto device = std::make_shared<VirtualCANPlugin>();
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, device);
-	CANHardwareInterface::start();
+	auto network = std::make_shared<CANNetworkManager>();
+	ASSERT_TRUE(CANHardwareInterface::assign_can_channel_frame_handler(network, device));
+	ASSERT_TRUE(CANHardwareInterface::start());
 
 	CANMessageFrame fakeFrame;
 	memset(&fakeFrame, 0, sizeof(CANMessageFrame));
@@ -55,7 +55,6 @@ TEST(HARDWARE_INTERFACE_TESTS, ReceiveMessageFromHardware)
 	fakeFrame.isExtendedFrame = false;
 	fakeFrame.dataLength = 1;
 	fakeFrame.data[0] = 0x01;
-	fakeFrame.channel = 0;
 
 	int messageCount = 0;
 	std::function<void(const CANMessageFrame &)> receivedCallback = [&messageCount](const CANMessageFrame &frame) {
@@ -81,9 +80,9 @@ TEST(HARDWARE_INTERFACE_TESTS, MessageFrameSentEventListener)
 {
 	auto receiver = std::make_shared<VirtualCANPlugin>();
 	auto sender = std::make_shared<VirtualCANPlugin>();
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, sender);
-	CANHardwareInterface::start();
+	auto network = std::make_shared<CANNetworkManager>();
+	ASSERT_TRUE(CANHardwareInterface::assign_can_channel_frame_handler(network, sender));
+	ASSERT_TRUE(CANHardwareInterface::start());
 
 	CANMessageFrame fakeFrame;
 	memset(&fakeFrame, 0, sizeof(CANMessageFrame));
@@ -91,7 +90,6 @@ TEST(HARDWARE_INTERFACE_TESTS, MessageFrameSentEventListener)
 	fakeFrame.isExtendedFrame = false;
 	fakeFrame.dataLength = 1;
 	fakeFrame.data[0] = 0x01;
-	fakeFrame.channel = 0;
 
 	CANMessageFrame receiveFrame;
 	memset(&receiveFrame, 0, sizeof(CANMessageFrame));
@@ -108,7 +106,7 @@ TEST(HARDWARE_INTERFACE_TESTS, MessageFrameSentEventListener)
 
 	auto listener = CANHardwareInterface::get_can_frame_transmitted_event_dispatcher().add_listener(sendCallback);
 
-	isobus::send_can_message_frame_to_hardware(fakeFrame);
+	isobus::send_can_message_frame_to_hardware(network, fakeFrame);
 
 	auto future = std::async(std::launch::async, [&messageCount] { while (messageCount == 0 && CANHardwareInterface::is_running()); });
 	EXPECT_TRUE(future.wait_for(std::chrono::seconds(5)) != std::future_status::timeout);

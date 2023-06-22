@@ -39,8 +39,8 @@ int main()
 		return -1;
 	}
 
-	isobus::CANHardwareInterface::set_number_of_can_channels(1);
-	isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
+	auto network = std::make_shared<isobus::CANNetworkManager>();
+	isobus::CANHardwareInterface::assign_can_channel_frame_handler(network, canDriver);
 
 	if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
 	{
@@ -64,7 +64,7 @@ int main()
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, 0);
+	auto TestInternalECU = isobus::InternalControlFunction::create(TestDeviceNAME, 0x1C, network);
 
 	// Wait to make sure address claiming is done. The time is arbitrary.
 	//! @todo Check this instead of asuming it is done

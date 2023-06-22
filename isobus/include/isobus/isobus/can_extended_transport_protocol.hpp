@@ -79,7 +79,7 @@ namespace isobus
 			};
 
 			/// @brief A useful way to compare sesson objects to each other for equality
-			bool operator==(const ExtendedTransportProtocolSession &obj);
+			bool operator==(const ExtendedTransportProtocolSession &obj) const;
 
 			/// @brief Get the total number of bytes that will be sent or received in this session
 			/// @return The length of the message in number of bytes
@@ -90,33 +90,23 @@ namespace isobus
 
 			/// @brief The constructor for an ETP session
 			/// @param[in] sessionDirection Tx or Rx
-			/// @param[in] canPortIndex The CAN channel index for the session
-			ExtendedTransportProtocolSession(Direction sessionDirection, std::uint8_t canPortIndex);
+			ExtendedTransportProtocolSession(Direction sessionDirection);
 
-			/// @brief The destructor for a ETP session
-			~ExtendedTransportProtocolSession();
-
-			StateMachineState state; ///< The state machine state for this session
+			StateMachineState state = StateMachineState::None; ///< The state machine state for this session
 			CANMessage sessionMessage; ///< A CAN message is used in the session to represent and store data like PGN
-			TransmitCompleteCallback sessionCompleteCallback; ///< A callback that is to be called when the session is completed
-			DataChunkCallback frameChunkCallback; ///< A callback that might be used to get chunks of data to send
-			std::uint32_t frameChunkCallbackMessageLength; ///< The length of the message that is being sent in chunks
-			void *parent; ///< A generic context variable that helps identify what object callbacks are destined for. Can be nullptr
-			std::uint32_t timestamp_ms; ///< A timestamp used to track session timeouts
-			std::uint32_t lastPacketNumber; ///< The last processed sequence number for this set of packets
-			std::uint32_t packetCount; ///< The total number of packets to receive or send in this session
-			std::uint32_t processedPacketsThisSession; ///< The total processed packet count for the whole session so far
+			TransmitCompleteCallback sessionCompleteCallback = nullptr; ///< A callback that is to be called when the session is completed
+			DataChunkCallback frameChunkCallback = nullptr; ///< A callback that might be used to get chunks of data to send
+			std::uint32_t frameChunkCallbackMessageLength = 0; ///< The length of the message that is being sent in chunks
+			void *parent = nullptr; ///< A generic context variable that helps identify what object callbacks are destined for. Can be nullptr
+			std::uint32_t timestamp_ms = 0; ///< A timestamp used to track session timeouts
+			std::uint32_t lastPacketNumber = 0; ///< The last processed sequence number for this set of packets
+			std::uint32_t packetCount = 0; ///< The total number of packets to receive or send in this session
+			std::uint32_t processedPacketsThisSession = 0; ///< The total processed packet count for the whole session so far
 			const Direction sessionDirection; ///< Represents Tx or Rx session
 		};
 
-		/// @brief The constructor for the TransportProtocolManager
-		ExtendedTransportProtocolManager();
-
-		/// @brief The destructor for the TransportProtocolManager
-		~ExtendedTransportProtocolManager() final;
-
 		/// @brief The protocol's initializer function
-		void initialize(CANLibBadge<CANNetworkManager>) override;
+		void initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>) override;
 
 		/// @brief A generic way for a protocol to process a received message
 		/// @param[in] message A received CAN message

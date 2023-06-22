@@ -21,21 +21,12 @@
 
 namespace isobus
 {
-	TransportProtocolManager::TransportProtocolSession::TransportProtocolSession(Direction sessionDirection, std::uint8_t canPortIndex) :
-	  state(StateMachineState::None),
-	  sessionMessage(canPortIndex),
-	  sessionCompleteCallback(nullptr),
-	  frameChunkCallback(nullptr),
-	  timestamp_ms(0),
-	  lastPacketNumber(0),
-	  packetCount(0),
-	  processedPacketsThisSession(0),
-	  clearToSendPacketMax(0),
+	TransportProtocolManager::TransportProtocolSession::TransportProtocolSession(Direction sessionDirection) :
 	  sessionDirection(sessionDirection)
 	{
 	}
 
-	bool TransportProtocolManager::TransportProtocolSession::operator==(const TransportProtocolSession &obj)
+	bool TransportProtocolManager::TransportProtocolSession::operator==(const TransportProtocolSession &obj) const
 	{
 		return ((sessionMessage.get_source_control_function() == obj.sessionMessage.get_source_control_function()) &&
 		        (sessionMessage.get_destination_control_function() == obj.sessionMessage.get_destination_control_function()) &&
@@ -51,27 +42,13 @@ namespace isobus
 		return sessionMessage.get_data_length();
 	}
 
-	TransportProtocolManager::TransportProtocolSession::~TransportProtocolSession()
-	{
-	}
-
-	TransportProtocolManager::TransportProtocolManager()
-	{
-	}
-
-	TransportProtocolManager::~TransportProtocolManager()
-	{
-		// No need to clean up, as this object is a member of the network manager
-		// so its callbacks will be cleared at destruction time
-	}
-
-	void TransportProtocolManager::initialize(CANLibBadge<CANNetworkManager>)
+	void TransportProtocolManager::initialize(std::shared_ptr<CANNetworkManager> network, CANLibBadge<CANNetworkManager>)
 	{
 		if (!initialized)
 		{
 			initialized = true;
-			CANNetworkManager::CANNetwork.add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand), process_message, this);
-			CANNetworkManager::CANNetwork.add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolData), process_message, this);
+			network->add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand), process_message, this);
+			network->add_protocol_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolData), process_message, this);
 		}
 	}
 
@@ -79,7 +56,7 @@ namespace isobus
 	{
 		if ((nullptr != message.get_source_control_function()) &&
 		    ((nullptr == message.get_destination_control_function()) ||
-		     (nullptr != CANNetworkManager::CANNetwork.get_internal_control_function(message.get_destination_control_function()))))
+		     (nullptr != std::dynamic_pointer_cast<InternalControlFunction>(message.get_destination_control_function()))))
 		{
 			switch (message.get_identifier().get_parameter_group_number())
 			{
@@ -98,7 +75,7 @@ namespace isobus
 								    (activeSessions.size() < CANNetworkConfiguration::get_max_number_transport_protcol_sessions()) &&
 								    (!get_session(session, message.get_source_control_function(), message.get_destination_control_function(), pgn)))
 								{
-									TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Receive, message.get_can_port_index());
+									TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Receive);
 									CANIdentifier tempIdentifierData(CANIdentifier::Type::Extended, pgn, CANIdentifier::CANPriority::PriorityLowest7, BROADCAST_CAN_ADDRESS, message.get_source_control_function()->get_address());
 									newSession->sessionMessage.set_data_size(static_cast<std::uint16_t>(data[1]) | static_cast<std::uint16_t>(data[2] << 8));
 									newSession->sessionMessage.set_source_control_function(message.get_source_control_function());
@@ -134,7 +111,7 @@ namespace isobus
 								    (activeSessions.size() < CANNetworkConfiguration::get_max_number_transport_protcol_sessions()) &&
 								    (!get_session(session, message.get_source_control_function(), message.get_destination_control_function(), pgn)))
 								{
-									TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Receive, message.get_can_port_index());
+									TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Receive);
 									CANIdentifier tempIdentifierData(CANIdentifier::Type::Extended, pgn, CANIdentifier::CANPriority::PriorityLowest7, message.get_destination_control_function()->get_address(), message.get_source_control_function()->get_address());
 									newSession->sessionMessage.set_data_size(static_cast<std::uint16_t>(data[1]) | static_cast<std::uint16_t>(data[2] << 8));
 									newSession->sessionMessage.set_source_control_function(message.get_source_control_function());
@@ -298,8 +275,11 @@ namespace isobus
 								{
 									send_end_of_session_acknowledgement(tempSession);
 								}
-								CANNetworkManager::CANNetwork.process_any_control_function_pgn_callbacks(tempSession->sessionMessage);
-								CANNetworkManager::CANNetwork.protocol_message_callback(tempSession->sessionMessage);
+								if (auto network = message.get_source_control_function()->get_associated_network().lock())
+								{
+									network->process_any_control_function_pgn_callbacks(tempSession->sessionMessage);
+									network->protocol_message_callback(tempSession->sessionMessage);
+								}
 								close_session(tempSession, true);
 							}
 							tempSession->timestamp_ms = SystemTiming::get_timestamp_ms();
@@ -371,8 +351,7 @@ namespace isobus
 		     (destination->get_address_valid())) &&
 		    (!get_session(session, source, destination, parameterGroupNumber)))
 		{
-			TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Transmit,
-			                                                                    source->get_can_port());
+			TransportProtocolSession *newSession = new TransportProtocolSession(TransportProtocolSession::Direction::Transmit);
 			std::uint8_t destinationAddress;
 
 			if (dataBuffer != nullptr)
@@ -444,12 +423,12 @@ namespace isobus
 
 			if (TransportProtocolSession::Direction::Transmit == session->sessionDirection)
 			{
-				myControlFunction = CANNetworkManager::CANNetwork.get_internal_control_function(session->sessionMessage.get_source_control_function());
+				myControlFunction = std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function());
 				partnerControlFunction = session->sessionMessage.get_destination_control_function();
 			}
 			else
 			{
-				myControlFunction = CANNetworkManager::CANNetwork.get_internal_control_function(session->sessionMessage.get_destination_control_function());
+				myControlFunction = std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_destination_control_function());
 				partnerControlFunction = session->sessionMessage.get_source_control_function();
 			}
 
@@ -461,12 +440,12 @@ namespace isobus
 			data[5] = static_cast<std::uint8_t>(pgn & 0xFF);
 			data[6] = static_cast<std::uint8_t>((pgn >> 8) & 0xFF);
 			data[7] = static_cast<std::uint8_t>((pgn >> 16) & 0xFF);
-			retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-			                                                        data.data(),
-			                                                        8,
-			                                                        myControlFunction,
-			                                                        partnerControlFunction,
-			                                                        CANIdentifier::CANPriority::PriorityDefault6);
+			retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+			                                             data.data(),
+			                                             8,
+			                                             myControlFunction,
+			                                             partnerControlFunction,
+			                                             CANIdentifier::CANPriority::PriorityDefault6);
 		}
 		return retVal;
 	}
@@ -483,12 +462,12 @@ namespace isobus
 		data[5] = static_cast<std::uint8_t>(parameterGroupNumber & 0xFF);
 		data[6] = static_cast<std::uint8_t>((parameterGroupNumber >> 8) & 0xFF);
 		data[7] = static_cast<std::uint8_t>((parameterGroupNumber >> 16) & 0xFF);
-		return CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-		                                                      data.data(),
-		                                                      8,
-		                                                      source,
-		                                                      destination,
-		                                                      CANIdentifier::CANPriority::PriorityDefault6);
+		return CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+		                                           data.data(),
+		                                           8,
+		                                           source,
+		                                           destination,
+		                                           CANIdentifier::CANPriority::PriorityDefault6);
 	}
 
 	void TransportProtocolManager::close_session(TransportProtocolSession *session, bool successfull)
@@ -536,12 +515,12 @@ namespace isobus
 				                                                 static_cast<std::uint8_t>(session->sessionMessage.get_identifier().get_parameter_group_number() & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 8) & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 16) & 0xFF) };
-			retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-			                                                        dataBuffer,
-			                                                        CAN_DATA_LENGTH,
-			                                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
-			                                                        nullptr,
-			                                                        CANIdentifier::CANPriority::PriorityDefault6);
+			retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+			                                             dataBuffer,
+			                                             CAN_DATA_LENGTH,
+			                                             std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
+			                                             nullptr,
+			                                             CANIdentifier::CANPriority::PriorityDefault6);
 		}
 		return retVal;
 	}
@@ -572,12 +551,12 @@ namespace isobus
 				                                                 static_cast<std::uint8_t>(session->sessionMessage.get_identifier().get_parameter_group_number() & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 8) & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 16) & 0xFF) };
-			retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-			                                                        dataBuffer,
-			                                                        CAN_DATA_LENGTH,
-			                                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_destination_control_function()),
-			                                                        session->sessionMessage.get_source_control_function(),
-			                                                        CANIdentifier::CANPriority::PriorityDefault6);
+			retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+			                                             dataBuffer,
+			                                             CAN_DATA_LENGTH,
+			                                             std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_destination_control_function()),
+			                                             session->sessionMessage.get_source_control_function(),
+			                                             CANIdentifier::CANPriority::PriorityDefault6);
 		}
 		return retVal;
 	}
@@ -596,12 +575,12 @@ namespace isobus
 				                                                 static_cast<std::uint8_t>(session->sessionMessage.get_identifier().get_parameter_group_number() & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 8) & 0xFF),
 				                                                 static_cast<std::uint8_t>((session->sessionMessage.get_identifier().get_parameter_group_number() >> 16) & 0xFF) };
-			retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-			                                                        dataBuffer,
-			                                                        CAN_DATA_LENGTH,
-			                                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
-			                                                        session->sessionMessage.get_destination_control_function(),
-			                                                        CANIdentifier::CANPriority::PriorityDefault6);
+			retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+			                                             dataBuffer,
+			                                             CAN_DATA_LENGTH,
+			                                             std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
+			                                             session->sessionMessage.get_destination_control_function(),
+			                                             CANIdentifier::CANPriority::PriorityDefault6);
 		}
 		return retVal;
 	}
@@ -628,12 +607,12 @@ namespace isobus
 			// This message only needs to be sent if we're the recipient. Sanity check the destination is us
 			if (ControlFunction::Type::Internal == session->sessionMessage.get_destination_control_function()->get_type())
 			{
-				retVal = CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
-				                                                        dataBuffer,
-				                                                        CAN_DATA_LENGTH,
-				                                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_destination_control_function()),
-				                                                        session->sessionMessage.get_source_control_function(),
-				                                                        CANIdentifier::CANPriority::PriorityDefault6);
+				retVal = CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolCommand),
+				                                             dataBuffer,
+				                                             CAN_DATA_LENGTH,
+				                                             std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_destination_control_function()),
+				                                             session->sessionMessage.get_source_control_function(),
+				                                             CANIdentifier::CANPriority::PriorityDefault6);
 			}
 		}
 		else
@@ -797,12 +776,12 @@ namespace isobus
 								}
 							}
 
-							if (CANNetworkManager::CANNetwork.send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolData),
-							                                                   dataBuffer,
-							                                                   CAN_DATA_LENGTH,
-							                                                   std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
-							                                                   session->sessionMessage.get_destination_control_function(),
-							                                                   CANIdentifier::CANPriority::PriorityLowest7))
+							if (CANNetworkManager::send_can_message(static_cast<std::uint32_t>(CANLibParameterGroupNumber::TransportProtocolData),
+							                                        dataBuffer,
+							                                        CAN_DATA_LENGTH,
+							                                        std::dynamic_pointer_cast<InternalControlFunction>(session->sessionMessage.get_source_control_function()),
+							                                        session->sessionMessage.get_destination_control_function(),
+							                                        CANIdentifier::CANPriority::PriorityLowest7))
 							{
 								session->lastPacketNumber++;
 								session->processedPacketsThisSession++;

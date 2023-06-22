@@ -139,7 +139,7 @@ In this example, I'll use a shared_ptr to store my InternalControlFunction, but 
     myNAME.set_manufacturer_code(64);
 
     // Create our InternalControlFunction
-    myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+    myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
     return 0;
    }
@@ -177,7 +177,7 @@ There are a few lines we'll need to add:
 .. code-block:: c++
 
    std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-   isobus::CANHardwareInterface::set_number_of_can_channels(1);
+   isobus::auto network = std::make_shared<CANNetworkManager>();
    isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
    if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -218,7 +218,7 @@ Let's see what we've got so far:
 
       // Set up the hardware layer to use SocketCAN interface on channel "can0"
       std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-      isobus::CANHardwareInterface::set_number_of_can_channels(1);
+      isobus::auto network = std::make_shared<CANNetworkManager>();
       isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
       if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -240,7 +240,7 @@ Let's see what we've got so far:
       myNAME.set_manufacturer_code(64);
 
       // Create our InternalControlFunction
-      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
       return 0;
    }
@@ -280,7 +280,7 @@ Make sure to include `csignal`.
 
       // Set up the hardware layer to use SocketCAN interface on channel "can0"
       std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-      isobus::CANHardwareInterface::set_number_of_can_channels(1);
+      isobus::auto network = std::make_shared<CANNetworkManager>();
       isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
       if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -305,7 +305,7 @@ Make sure to include `csignal`.
       myNAME.set_manufacturer_code(64);
 
       // Create our InternalControlFunction
-      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+      myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
       // Clean up the threads
       isobus::CANHardwareInterface::stop();
@@ -348,7 +348,7 @@ The total result:
 
     // Set up the hardware layer to use SocketCAN interface on channel "can0"
     std::shared_ptr<isobus::SocketCANInterface> canDriver = std::make_shared<isobus::SocketCANInterface>("can0");
-    isobus::CANHardwareInterface::set_number_of_can_channels(1);
+    isobus::auto network = std::make_shared<CANNetworkManager>();
     isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
 
     if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
@@ -373,7 +373,7 @@ The total result:
     myNAME.set_manufacturer_code(64);
 
     // Create our InternalControlFunction
-    myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, 0);
+    myECU = isobus::InternalControlFunction::create(myNAME, 0x1C, network);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
@@ -402,7 +402,7 @@ Here is the code we'll need to add:
 
     std::array<std::uint8_t, isobus::CAN_DATA_LENGTH> messageData = {0}; // Data is just all zeros
 
-   isobus::CANNetworkManager::CANNetwork.send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
+   isobus::CANNetworkManager::send_can_message(0xEF00, messageData.data(), isobus::CAN_DATA_LENGTH, myECU.get());
 
    // Give the CAN stack some time to send the message
    std::this_thread::sleep_for(std::chrono::milliseconds(10));

@@ -27,15 +27,15 @@ TEST(CONTROL_FUNCTION_FUNCTIONALITIES_TESTS, CFFunctionalitiesTest)
 	VirtualCANPlugin requesterPlugin;
 	requesterPlugin.open();
 
-	CANHardwareInterface::set_number_of_can_channels(1);
-	CANHardwareInterface::assign_can_channel_frame_handler(0, std::make_shared<VirtualCANPlugin>());
+	auto network = std::make_shared<CANNetworkManager>();
+	CANHardwareInterface::assign_can_channel_frame_handler(network, std::make_shared<VirtualCANPlugin>());
 	CANHardwareInterface::start();
 
 	NAME clientNAME(0);
 	clientNAME.set_industry_group(2);
 	clientNAME.set_function_instance(3);
 	clientNAME.set_function_code(static_cast<std::uint8_t>(NAME::Function::TirePressureControl));
-	auto internalECU = InternalControlFunction::create(clientNAME, 0x50, 0);
+	auto internalECU = InternalControlFunction::create(clientNAME, 0x50, network);
 
 	CANMessageFrame testFrame;
 
@@ -523,8 +523,8 @@ TEST(CONTROL_FUNCTION_FUNCTIONALITIES_TESTS, CFFunctionalitiesTest)
 	testFrame.data[1] = 0xFC;
 	testFrame.data[2] = 0x00;
 	testFrame.dataLength = 3;
-	CANNetworkManager::process_receive_can_message_frame(testFrame);
-	CANNetworkManager::CANNetwork.update();
+	network->process_receive_can_message_frame(testFrame);
+	network->update();
 
 	cfFunctionalitiesUnderTest.update(); // Updating manually since we're not integrated with the diagnostic protocol inside this test
 

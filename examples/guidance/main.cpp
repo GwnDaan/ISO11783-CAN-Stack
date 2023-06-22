@@ -77,8 +77,9 @@ int main()
 
 	isobus::CANStackLogger::set_can_stack_logger_sink(&logger);
 	isobus::CANStackLogger::set_log_level(isobus::CANStackLogger::LoggingLevel::Info); // Change this to Debug to see more information
-	isobus::CANHardwareInterface::set_number_of_can_channels(1);
-	isobus::CANHardwareInterface::assign_can_channel_frame_handler(0, canDriver);
+
+	auto network = std::make_shared<isobus::CANNetworkManager>();
+	isobus::CANHardwareInterface::assign_can_channel_frame_handler(network, canDriver);
 
 	if ((!isobus::CANHardwareInterface::start()) || (!canDriver->get_is_valid()))
 	{
@@ -102,7 +103,7 @@ int main()
 	TestDeviceNAME.set_device_class_instance(0);
 	TestDeviceNAME.set_manufacturer_code(64);
 
-	isobus::AgriculturalGuidanceInterface TestGuidanceInterface(nullptr, nullptr);
+	isobus::AgriculturalGuidanceInterface TestGuidanceInterface(network, nullptr, nullptr);
 
 	// Register listeners for the (guidance) events we want to receive
 	//! @note That the listeners are removed automatically when the returned `shared_ptr` goes out of scope!!!

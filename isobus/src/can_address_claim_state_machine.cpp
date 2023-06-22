@@ -18,25 +18,27 @@
 
 namespace isobus
 {
-	AddressClaimStateMachine::AddressClaimStateMachine(std::uint8_t preferredAddressValue, NAME ControlFunctionNAME, std::uint8_t portIndex) :
+	AddressClaimStateMachine::AddressClaimStateMachine(std::uint8_t preferredAddressValue, NAME ControlFunctionNAME, std::shared_ptr<CANNetworkManager> network) :
 	  m_isoname(ControlFunctionNAME),
-	  m_portIndex(portIndex),
+	  associatedNetwork(network),
 	  m_preferredAddress(preferredAddressValue)
 	{
 		assert(m_preferredAddress != BROADCAST_CAN_ADDRESS);
 		assert(m_preferredAddress != NULL_CAN_ADDRESS);
-		assert(portIndex < CAN_PORT_MAXIMUM);
 		std::default_random_engine generator;
 		std::uniform_int_distribution<unsigned int> distribution(0, 255);
 		m_randomClaimDelay_ms = distribution(generator) * 0.6f; // Defined by ISO part 5
-		CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_rx_message, this);
-		CANNetworkManager::CANNetwork.add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim), process_rx_message, this);
+		network->add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_rx_message, this);
+		network->add_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim), process_rx_message, this);
 	}
 
 	AddressClaimStateMachine ::~AddressClaimStateMachine()
 	{
-		CANNetworkManager::CANNetwork.remove_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_rx_message, this);
-		CANNetworkManager::CANNetwork.remove_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim), process_rx_message, this);
+		if (auto network = associatedNetwork.lock())
+		{
+			network->remove_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest), process_rx_message, this);
+			network->remove_global_parameter_group_number_callback(static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim), process_rx_message, this);
+		}
 	}
 
 	AddressClaimStateMachine::State AddressClaimStateMachine::get_current_state() const
@@ -54,24 +56,27 @@ namespace isobus
 			}
 			else
 			{
-				std::shared_ptr<ControlFunction> deviceAtOurPreferredAddress = CANNetworkManager::CANNetwork.get_control_function(m_portIndex, commandedAddress, {});
-				m_preferredAddress = commandedAddress;
+				if (auto network = associatedNetwork.lock())
+				{
+					std::shared_ptr<ControlFunction> deviceAtOurPreferredAddress = network->get_control_function(commandedAddress, {});
+					m_preferredAddress = commandedAddress;
 
-				if (nullptr == deviceAtOurPreferredAddress)
-				{
-					// Commanded address is free. We'll claim it.
-					set_current_state(State::SendPreferredAddressClaim);
-					CANStackLogger::info("[AC]: Our address was commanded to a new value of %u", commandedAddress);
-				}
-				else if (deviceAtOurPreferredAddress->get_NAME().get_full_name() < m_isoname.get_full_name())
-				{
-					// We can steal the address of the device at our commanded address and force it to move
-					set_current_state(State::SendArbitraryAddressClaim);
-					CANStackLogger::info("[AC]: Our address was commanded to a new value of %u, and an ECU at the target address is being evicted.", commandedAddress);
-				}
-				else
-				{
-					CANStackLogger::error("[AC]: Our address was commanded to a new value of %u, but we cannot move to the target address.", commandedAddress);
+					if (nullptr == deviceAtOurPreferredAddress)
+					{
+						// Commanded address is free. We'll claim it.
+						set_current_state(State::SendPreferredAddressClaim);
+						CANStackLogger::info("[AC]: Our address was commanded to a new value of %u", commandedAddress);
+					}
+					else if (deviceAtOurPreferredAddress->get_NAME().get_full_name() < m_isoname.get_full_name())
+					{
+						// We can steal the address of the device at our commanded address and force it to move
+						set_current_state(State::SendArbitraryAddressClaim);
+						CANStackLogger::info("[AC]: Our address was commanded to a new value of %u, and an ECU at the target address is being evicted.", commandedAddress);
+					}
+					else
+					{
+						CANStackLogger::error("[AC]: Our address was commanded to a new value of %u, but we cannot move to the target address.", commandedAddress);
+					}
 				}
 			}
 		}
@@ -132,34 +137,37 @@ namespace isobus
 
 					if (SystemTiming::time_expired_ms(m_timestamp_ms, addressContentionTime_ms + m_randomClaimDelay_ms))
 					{
-						std::shared_ptr<ControlFunction> deviceAtOurPreferredAddress = CANNetworkManager::CANNetwork.get_control_function(m_portIndex, m_preferredAddress, {});
-						// Time to find a free address
-						if (nullptr == deviceAtOurPreferredAddress)
+						if (auto network = associatedNetwork.lock())
 						{
-							// Our address is free. This is the best outcome. Claim it.
-							set_current_state(State::SendPreferredAddressClaim);
-						}
-						else if ((!m_isoname.get_arbitrary_address_capable()) &&
-						         (deviceAtOurPreferredAddress->get_NAME().get_full_name() > m_isoname.get_full_name()))
-						{
-							// Our address is not free, we cannot be at an arbitrary address, and address is contendable
-							set_current_state(State::ContendForPreferredAddress);
-						}
-						else if (!m_isoname.get_arbitrary_address_capable())
-						{
-							// Can't claim because we cannot tolerate an arbitrary address, and the CF at that spot wins contention
-							set_current_state(State::UnableToClaim);
-						}
-						else
-						{
-							// We will move to another address if whoever is in our spot has a lower NAME
-							if (deviceAtOurPreferredAddress->get_NAME().get_full_name() < m_isoname.get_full_name())
+							std::shared_ptr<ControlFunction> deviceAtOurPreferredAddress = network->get_control_function(m_preferredAddress, {});
+							// Time to find a free address
+							if (nullptr == deviceAtOurPreferredAddress)
 							{
-								set_current_state(State::SendArbitraryAddressClaim);
+								// Our address is free. This is the best outcome. Claim it.
+								set_current_state(State::SendPreferredAddressClaim);
+							}
+							else if ((!m_isoname.get_arbitrary_address_capable()) &&
+							         (deviceAtOurPreferredAddress->get_NAME().get_full_name() > m_isoname.get_full_name()))
+							{
+								// Our address is not free, we cannot be at an arbitrary address, and address is contendable
+								set_current_state(State::ContendForPreferredAddress);
+							}
+							else if (!m_isoname.get_arbitrary_address_capable())
+							{
+								// Can't claim because we cannot tolerate an arbitrary address, and the CF at that spot wins contention
+								set_current_state(State::UnableToClaim);
 							}
 							else
 							{
-								set_current_state(State::SendPreferredAddressClaim);
+								// We will move to another address if whoever is in our spot has a lower NAME
+								if (deviceAtOurPreferredAddress->get_NAME().get_full_name() < m_isoname.get_full_name())
+								{
+									set_current_state(State::SendArbitraryAddressClaim);
+								}
+								else
+								{
+									set_current_state(State::SendPreferredAddressClaim);
+								}
 							}
 						}
 					}
@@ -186,11 +194,14 @@ namespace isobus
 
 					for (std::uint8_t i = 128; i <= 247; i++)
 					{
-						if ((nullptr == CANNetworkManager::CANNetwork.get_control_function(m_portIndex, i, {})) && (send_address_claim(i)))
+						if (auto network = associatedNetwork.lock())
 						{
-							addressFound = true;
-							set_current_state(State::AddressClaimingComplete);
-							break;
+							if ((nullptr == network->get_control_function(i, {})) && (send_address_claim(i)))
+							{
+								addressFound = true;
+								set_current_state(State::AddressClaimingComplete);
+								break;
+							}
 						}
 					}
 
@@ -234,8 +245,7 @@ namespace isobus
 		{
 			AddressClaimStateMachine *parent = reinterpret_cast<AddressClaimStateMachine *>(parentPointer);
 
-			if ((message.get_can_port_index() == parent->m_portIndex) &&
-			    (parent->get_enabled()))
+			if (parent->get_enabled())
 			{
 				switch (message.get_identifier().get_parameter_group_number())
 				{
@@ -310,14 +320,16 @@ namespace isobus
 			dataBuffer[1] = ((PGN >> 8) & std::numeric_limits<std::uint8_t>::max());
 			dataBuffer[2] = ((PGN >> 16) & std::numeric_limits<std::uint8_t>::max());
 
-			retVal = CANNetworkManager::CANNetwork.send_can_message_raw(m_portIndex,
-			                                                            NULL_CAN_ADDRESS,
-			                                                            BROADCAST_CAN_ADDRESS,
-			                                                            static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest),
-			                                                            static_cast<std::uint8_t>(CANIdentifier::CANPriority::PriorityDefault6),
-			                                                            dataBuffer,
-			                                                            3,
-			                                                            {});
+			if (auto network = associatedNetwork.lock())
+			{
+				retVal = network->send_can_message_raw(NULL_CAN_ADDRESS,
+				                                       BROADCAST_CAN_ADDRESS,
+				                                       static_cast<std::uint32_t>(CANLibParameterGroupNumber::ParameterGroupNumberRequest),
+				                                       static_cast<std::uint8_t>(CANIdentifier::CANPriority::PriorityDefault6),
+				                                       dataBuffer,
+				                                       3,
+				                                       {});
+			}
 		}
 		return retVal;
 	}
@@ -341,14 +353,17 @@ namespace isobus
 			dataBuffer[5] = static_cast<uint8_t>(isoNAME >> 40);
 			dataBuffer[6] = static_cast<uint8_t>(isoNAME >> 48);
 			dataBuffer[7] = static_cast<uint8_t>(isoNAME >> 56);
-			retVal = CANNetworkManager::CANNetwork.send_can_message_raw(m_portIndex,
-			                                                            address,
-			                                                            BROADCAST_CAN_ADDRESS,
-			                                                            static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim),
-			                                                            static_cast<std::uint8_t>(CANIdentifier::CANPriority::PriorityDefault6),
-			                                                            dataBuffer,
-			                                                            CAN_DATA_LENGTH,
-			                                                            {});
+			if (auto network = associatedNetwork.lock())
+			{
+				retVal = network->send_can_message_raw(address,
+				                                       BROADCAST_CAN_ADDRESS,
+				                                       static_cast<std::uint32_t>(CANLibParameterGroupNumber::AddressClaim),
+				                                       static_cast<std::uint8_t>(CANIdentifier::CANPriority::PriorityDefault6),
+				                                       dataBuffer,
+				                                       CAN_DATA_LENGTH,
+				                                       {});
+			}
+
 			if (retVal)
 			{
 				m_claimedAddress = address;
